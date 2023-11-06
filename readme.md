@@ -1,4 +1,4 @@
-# Using MinGW & SFML on Windows (10 min)
+# Dev env setup guide: Using MinGW & SFML on Windows (10 min)
 
 ## Setup MinGW (5 min)
 ### 1. Download MinGW 32-bit compiler from: https://www.sfml-dev.org/download/sfml/2.6.0/ so its version matches the SFML
