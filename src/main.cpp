@@ -11,18 +11,35 @@ struct triangle{
 struct mesh{
     std::vector<triangle> triangles;
 
-    // Magic ChatGPT product, research in bjarnes book
-    // Overloading the assignment operator for mesh
-    mesh& operator=(const std::initializer_list<triangle>& init_list) {
-        triangles = init_list; // Assign the initializer list to the triangles vector
-        return *this;
-    }
+    // ChatGPT magic; research in bjarne book
+    mesh(std::initializer_list<triangle> init_list) : triangles(init_list) {}
 };
 
-mesh cube = {
-    //south
-    {0.f,0.f,0.f, 1.f,0.f,0.f, 1.f,1.f,0.f},
-    
+mesh meshCube = {
+
+    // South Face
+    { 0.f, 0.f, 0.f,   0.f, 1.f, 0.f,   1.f, 1.f, 0.f},
+    { 0.f, 0.f, 0.f,   1.f, 1.f, 0.f,   1.f, 0.f, 0.f},
+
+    // East face
+    { 1.f, 0.f, 0.f,   1.f, 1.f, 0.f,   1.f, 1.f, 1.f },
+    { 1.f, 0.f, 0.f,   1.f, 1.f, 1.f,   1.f, 0.f, 1.f },
+
+    // North face
+    { 1.f, 0.f, 1.f,   1.f, 1.f, 1.f,   0.f, 1.f, 1.f },
+    { 1.f, 0.f, 1.f,   0.f, 1.f, 1.f,   0.f, 0.f, 1.f },
+
+    // West face
+    { 0.f, 0.f, 1.f,   0.f, 1.f, 1.f,   0.f, 1.f, 0.f },
+    { 0.f, 0.f, 1.f,   0.f, 1.f, 0.f,   0.f, 0.f, 0.f },
+
+    // Top face
+    { 0.f, 1.f, 0.f,   0.f, 1.f, 1.f,   1.f, 1.f, 1.f },
+    { 0.f, 1.f, 0.f,   1.f, 1.f, 1.f,   1.f, 1.f, 0.f },
+
+    // Bottom face
+    { 0.f, 0.f, 0.f,   0.f, 0.f, 1.f,   1.f, 0.f, 1.f },
+    { 0.f, 0.f, 0.f,   1.f, 0.f, 1.f,   1.f, 0.f, 0.f }
 };
 
 int main() {
