@@ -1,18 +1,19 @@
 #include <SFML/Graphics.hpp>
 
-struct vector3d{
+struct vector3d
+{
     float x, y, z;
 };
 
-struct triangle{
+struct triangle
+{
     vector3d vertices[3];
 };
 
-struct mesh{
+struct mesh
+{
+    mesh(std::initializer_list<triangle> initList) : triangles(initList) {}
     std::vector<triangle> triangles;
-
-    // ChatGPT magic; research in bjarne book
-    mesh(std::initializer_list<triangle> init_list) : triangles(init_list) {}
 };
 
 mesh meshCube = {
