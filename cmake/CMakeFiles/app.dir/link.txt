@@ -1,3 +1,0 @@
-C:\mingw32\bin\cmake.exe -E rm -f CMakeFiles\app.dir/objects.a
-C:\mingw32\bin\ar.exe qc CMakeFiles\app.dir/objects.a @CMakeFiles\app.dir\objects1.rsp
-C:\mingw32\bin\c++.exe -Wl,--whole-archive CMakeFiles\app.dir/objects.a -Wl,--no-whole-archive -o "C:\Users\laz\VS code projects\3d\bin\app.exe" -Wl,--out-implib,libapp.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\app.dir\linkLibs.rsp

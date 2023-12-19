@@ -1,3 +1,0 @@
-C:/Users/laz/VS code projects/3d/cmake/CMakeFiles/app.dir
-C:/Users/laz/VS code projects/3d/cmake/CMakeFiles/edit_cache.dir
-C:/Users/laz/VS code projects/3d/cmake/CMakeFiles/rebuild_cache.dir
