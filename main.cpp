@@ -1,5 +1,7 @@
 #include <windows.h>
 #include <vector>
+#include <thread>
+#include <cstdlib>
 
 struct Vector3D {
     float x, y, z;
@@ -45,17 +47,50 @@ struct Triangle2D {
     POINT points[3];
 };
 
+void DrawTriangles(HDC &hdc, std::vector<Triangle2D> &triangles);
+
 POINT mousePos = { 0, 0 };
 COLORREF backgroundColor = RGB(0, 0, 0);
 
+// Declare a global off-screen buffer and its device context
+HDC hdcBuffer = NULL;
+HBITMAP hBitmap = NULL;
+HBITMAP hOldBitmap = NULL;
+int screenWidth = 0;
+int screenHeight = 0;
+
+// Function to initialize off-screen buffer
+void InitBuffer(HWND hwnd) {
+    RECT clientRect;
+    GetClientRect(hwnd, &clientRect);
+    screenWidth = clientRect.right - clientRect.left;
+    screenHeight = clientRect.bottom - clientRect.top;
+
+    hdcBuffer = CreateCompatibleDC(NULL);
+    hBitmap = CreateCompatibleBitmap(GetDC(hwnd), screenWidth, screenHeight);
+    hOldBitmap = (HBITMAP)SelectObject(hdcBuffer, hBitmap);
+}
+
+// Function to release off-screen buffer
+void ReleaseBuffer() {
+    SelectObject(hdcBuffer, hOldBitmap);
+    DeleteObject(hBitmap);
+    DeleteDC(hdcBuffer);
+}
+
+// Function to copy the off-screen buffer to the window
+void CopyBufferToWindow(HWND hwnd) {
+    HDC hdc = GetDC(hwnd);
+    BitBlt(hdc, 0, 0, screenWidth, screenHeight, hdcBuffer, 0, 0, SRCCOPY);
+    ReleaseDC(hwnd, hdc);
+}
+
 // Function to draw a filled triangles in the specified device context
-void DrawTriangles(HWND &hwnd, std::vector<Triangle2D> &triangles) {
-    PAINTSTRUCT ps;
-    HDC hdc = BeginPaint(hwnd, &ps);
+void DrawTriangles(HDC &hdc, std::vector<Triangle2D> &triangles) {
 
     // Clear window screen rect
     RECT clientRect;
-    GetClientRect(hwnd, &clientRect);
+    GetClientRect(WindowFromDC(hdc), &clientRect);
 
     //Fill entire screen with specified background color
     HBRUSH hBackgroundBrush = CreateSolidBrush(backgroundColor);
@@ -68,9 +103,9 @@ void DrawTriangles(HWND &hwnd, std::vector<Triangle2D> &triangles) {
         HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
 
         // Fill the created region with the desired color
-        HBRUSH hBrush = CreateSolidBrush(RGB(20, 20, 20));
-        HBRUSH hBrush1 = CreateSolidBrush(RGB(0, 0, 150));
-        FillRgn(hdc, hRgn, hBrush);
+        //HBRUSH hBrush = CreateSolidBrush(RGB(20, 20, 20));
+        HBRUSH hBrush1 = CreateSolidBrush(RGB(rand(), 0, 255));
+        //FillRgn(hdc, hRgn, hBrush);
 
         // Draw the outline of the region with a different color (here: black)
         HPEN hPen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
@@ -79,14 +114,13 @@ void DrawTriangles(HWND &hwnd, std::vector<Triangle2D> &triangles) {
 
         // Clean up: delete the created region and brush to release resources
         DeleteObject(hRgn);
-        DeleteObject(hBrush);
+        DeleteObject(hBrush1);
         DeleteObject(hPen);
+        //DeleteObject(hBrush);
     }
-
-    EndPaint(hwnd, &ps);
 }
 
-void program(HWND &hwnd) {
+void program(HDC &hdc) {
     //accumulate triangle2ds to render
     std::vector<Triangle2D> triangles;
     for (const auto& triangle3D : meshCube.triangles) {
@@ -101,8 +135,33 @@ void program(HWND &hwnd) {
     }
 
     //render triangle2ds and clear list
-    DrawTriangles(hwnd, triangles);
+    DrawTriangles(hdc, triangles);
     triangles.clear();
+}
+
+void RenderingThread(HWND hwnd) {
+    InitBuffer(hwnd);
+
+    // Time-related variables for game loop control
+    DWORD previousTime = GetTickCount();
+    DWORD currentTime, deltaTime, targetDeltaTime = 1000 / 120; // Convert FPS to milliseconds
+
+    while (true) {
+        currentTime = GetTickCount();
+        deltaTime = currentTime - previousTime;
+
+        if (deltaTime >= targetDeltaTime) {
+            // Perform rendering
+            program(hdcBuffer);
+            CopyBufferToWindow(hwnd);
+
+            // Update previous time to maintain frame rate
+            previousTime = currentTime;
+        }
+    }
+
+    // Don't forget to release resources once the thread ends
+    ReleaseBuffer();
 }
 
 // Window procedure to handle messages for the main window
@@ -113,9 +172,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             mousePos.y = HIWORD(lParam);
             return 0;
         }
-        case WM_DESTROY:
-            PostQuitMessage(0);
-            return 0;
         default:
             return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
@@ -144,35 +200,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
-    // Time-related variables for game loop control
-    DWORD previousTime = GetTickCount();
-    DWORD currentTime, deltaTime, targetDeltaTime = 1000 / 1; // Convert FPS to milliseconds
+    // Create a new thread for rendering
+    std::thread renderThread(RenderingThread, hwnd);
 
-    // Game loop for continuous rendering
-    while (true) {
-        MSG msg = {};
+    // Process window messages and main application loop on the main thread
+    MSG msg = {};
+    while (GetMessage(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
 
-        // Process window messages if any (optional, for responsiveness)
-        while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-
-            if (msg.message == WM_QUIT)
-                return 0;
-        }
-
-        // Calculate delta time for smooth frame rate
-        currentTime = GetTickCount();
-        deltaTime = currentTime - previousTime;
-
-        // Perform rendering at a fixed frame rate (if enough time has elapsed)
-        if (deltaTime >= targetDeltaTime) {
-            InvalidateRect(hwnd, NULL, FALSE);
-            program(hwnd);
-            //This is absolute bs :(
-
-            // Update previous time to maintain frame rate
-            previousTime = currentTime;
-        }
+        if (msg.message == WM_QUIT)
+            break;
     }
+
+    // Join the rendering thread before exiting the application
+    renderThread.join();
+
+    return 0;
 }
