@@ -3,7 +3,8 @@
 g++ -static-libgcc -static-libstdc++ -mwindows -o 3dRenderer.exe main.cpp matrices.cpp -lgdi32
 
 if errorlevel 1 (
-	echo Make sure Mingw32 is installed properly, check readme.md
+	echo Make sure Mingw32 is installed and path variable set
+	echo https://github.com/niXman/mingw-builds-binaries/releases
 	pause
 ) else (
 	.\3dRenderer.exe

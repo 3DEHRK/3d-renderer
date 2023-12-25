@@ -1,6 +1,5 @@
 #include <windows.h>
 #include <vector>
-#include <thread>
 #include <cstdlib>
 
 struct Vector3D {
@@ -47,7 +46,34 @@ struct Triangle2D {
     POINT points[3];
 };
 
-void DrawTriangles(HDC &hdc, std::vector<Triangle2D> &triangles);
+void WindowProcess(HWND &hwnd);
+void WindowDraw(std::vector<Triangle2D> &triangles, HWND &hwnd);
+
+void rendererMain(HWND &hwnd) {
+    while(true) {
+
+        //accumulate triangle2ds to render
+        std::vector<Triangle2D> triangles;
+        for (const auto& triangle3D : meshCube.triangles) {
+            Triangle2D triangle2D;
+            for (int i = 0; i < 3; ++i) {
+                // Create 2D points by removing the z-component
+                triangle2D.points[i].x = static_cast<LONG>(triangle3D.vertices[i].x*4000/static_cast<LONG>(triangle3D.vertices[i].z+10.f));
+                triangle2D.points[i].y = static_cast<LONG>(triangle3D.vertices[i].y*4000/static_cast<LONG>(triangle3D.vertices[i].z+10.f));
+            }
+            // Push back the generated 2D triangle
+            triangles.push_back(triangle2D);
+        }
+
+        WindowProcess(hwnd);
+        //render triangle2ds and clear list
+        WindowDraw(triangles, hwnd);
+        triangles.clear();
+    }
+}
+
+
+// --- LOW LEVEL WIN32 GDI WINDOW STUFF ---
 
 POINT mousePos = { 0, 0 };
 COLORREF backgroundColor = RGB(0, 0, 0);
@@ -59,43 +85,16 @@ HBITMAP hOldBitmap = NULL;
 int screenWidth = 0;
 int screenHeight = 0;
 
-// Function to initialize off-screen buffer
-void InitBuffer(HWND hwnd) {
-    RECT clientRect;
-    GetClientRect(hwnd, &clientRect);
-    screenWidth = clientRect.right - clientRect.left;
-    screenHeight = clientRect.bottom - clientRect.top;
-
-    hdcBuffer = CreateCompatibleDC(NULL);
-    hBitmap = CreateCompatibleBitmap(GetDC(hwnd), screenWidth, screenHeight);
-    hOldBitmap = (HBITMAP)SelectObject(hdcBuffer, hBitmap);
-}
-
-// Function to release off-screen buffer
-void ReleaseBuffer() {
-    SelectObject(hdcBuffer, hOldBitmap);
-    DeleteObject(hBitmap);
-    DeleteDC(hdcBuffer);
-}
-
-// Function to copy the off-screen buffer to the window
-void CopyBufferToWindow(HWND hwnd) {
+void WindowDraw(std::vector<Triangle2D> &triangles, HWND &hwnd) {
     HDC hdc = GetDC(hwnd);
-    BitBlt(hdc, 0, 0, screenWidth, screenHeight, hdcBuffer, 0, 0, SRCCOPY);
-    ReleaseDC(hwnd, hdc);
-}
-
-// Function to draw a filled triangles in the specified device context
-void DrawTriangles(HDC &hdc, std::vector<Triangle2D> &triangles) {
 
     // Clear window screen rect
     RECT clientRect;
-    GetClientRect(WindowFromDC(hdc), &clientRect);
+    GetClientRect(hwnd, &clientRect);
 
     //Fill entire screen with specified background color
     HBRUSH hBackgroundBrush = CreateSolidBrush(backgroundColor);
-    FillRect(hdc, &clientRect, hBackgroundBrush);
-
+    FillRect(hdcBuffer, &clientRect, hBackgroundBrush);
     DeleteObject(hBackgroundBrush);
 
     for (const auto& triangle : triangles) {
@@ -105,12 +104,12 @@ void DrawTriangles(HDC &hdc, std::vector<Triangle2D> &triangles) {
         // Fill the created region with the desired color
         //HBRUSH hBrush = CreateSolidBrush(RGB(20, 20, 20));
         HBRUSH hBrush1 = CreateSolidBrush(RGB(rand(), 0, 255));
-        //FillRgn(hdc, hRgn, hBrush);
+        //FillRgn(hdcBuffer, hRgn, hBrush);
 
         // Draw the outline of the region with a different color (here: black)
         HPEN hPen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
-        SelectObject(hdc, hPen);
-        FrameRgn(hdc, hRgn, hBrush1, 1, 1);
+        SelectObject(hdcBuffer, hPen);
+        FrameRgn(hdcBuffer, hRgn, hBrush1, 1, 1);
 
         // Clean up: delete the created region and brush to release resources
         DeleteObject(hRgn);
@@ -118,50 +117,17 @@ void DrawTriangles(HDC &hdc, std::vector<Triangle2D> &triangles) {
         DeleteObject(hPen);
         //DeleteObject(hBrush);
     }
+    
+    BitBlt(hdc, 0, 0, screenWidth, screenHeight, hdcBuffer, 0, 0, SRCCOPY);
+    ReleaseDC(hwnd, hdc);
+    DeleteDC(hdc);//needed?
 }
 
-void program(HDC &hdc) {
-    //accumulate triangle2ds to render
-    std::vector<Triangle2D> triangles;
-    for (const auto& triangle3D : meshCube.triangles) {
-        Triangle2D triangle2D;
-        for (int i = 0; i < 3; ++i) {
-            // Create 2D points by removing the z-component
-            triangle2D.points[i].x = static_cast<LONG>(triangle3D.vertices[i].x*4000/static_cast<LONG>(triangle3D.vertices[i].z+10.f));
-            triangle2D.points[i].y = static_cast<LONG>(triangle3D.vertices[i].y*4000/static_cast<LONG>(triangle3D.vertices[i].z+10.f));
-        }
-        // Push back the generated 2D triangle
-        triangles.push_back(triangle2D);
-    }
-
-    //render triangle2ds and clear list
-    DrawTriangles(hdc, triangles);
-    triangles.clear();
-}
-
-void RenderingThread(HWND hwnd) {
-    InitBuffer(hwnd);
-
-    // Time-related variables for game loop control
-    DWORD previousTime = GetTickCount();
-    DWORD currentTime, deltaTime, targetDeltaTime = 1000 / 120; // Convert FPS to milliseconds
-
-    while (true) {
-        currentTime = GetTickCount();
-        deltaTime = currentTime - previousTime;
-
-        if (deltaTime >= targetDeltaTime) {
-            // Perform rendering
-            program(hdcBuffer);
-            CopyBufferToWindow(hwnd);
-
-            // Update previous time to maintain frame rate
-            previousTime = currentTime;
-        }
-    }
-
-    // Don't forget to release resources once the thread ends
-    ReleaseBuffer();
+void WindowProcess(HWND &hwnd) {
+    MSG msg = {};
+    PeekMessage(&msg, hwnd, 0, 0, PM_REMOVE);
+    TranslateMessage(&msg);
+    DispatchMessage(&msg);
 }
 
 // Window procedure to handle messages for the main window
@@ -172,12 +138,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             mousePos.y = HIWORD(lParam);
             return 0;
         }
+        case WM_DESTROY:
+            break;  //hackery fix .. no cleanup (-mwindows no exit bug); solid loop code and break on quit msg?
         default:
             return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
 }
 
-// Main function
+// Entry point function
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     // Register the window class
     WNDCLASS wc = {};
@@ -200,21 +168,40 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
-    // Create a new thread for rendering
-    std::thread renderThread(RenderingThread, hwnd);
+    // Init buffer (make sure you understand!)
+    RECT clientRect;
+    GetClientRect(hwnd, &clientRect);
+    screenWidth = clientRect.right - clientRect.left;
+    screenHeight = clientRect.bottom - clientRect.top;
+    hdcBuffer = CreateCompatibleDC(NULL);
+    hBitmap = CreateCompatibleBitmap(GetDC(hwnd), screenWidth, screenHeight);
+    hOldBitmap = (HBITMAP)SelectObject(hdcBuffer, hBitmap);
 
-    // Process window messages and main application loop on the main thread
+    // start main renderer process <-
+    rendererMain(hwnd);
+
+    //Release Buffer
+    SelectObject(hdcBuffer, hOldBitmap);
+    DeleteObject(hBitmap);
+    DeleteDC(hdcBuffer);
+    DeleteObject(hdcBuffer);
+
+    //kill app (grr not working because of -mwindows)
+    /*PostQuitMessage(0);
+    DestroyWindow(hwnd);
     MSG msg = {};
     while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
-
-        if (msg.message == WM_QUIT)
-            break;
     }
+    ExitProcess(0);
+    DWORD dwProcessId = 0;
+    GetWindowThreadProcessId(hwnd, &dwProcessId);
+    HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dwProcessId);
+    TerminateProcess(hProcess, 0);*/
 
-    // Join the rendering thread before exiting the application
-    renderThread.join();
+    DeleteObject(hwnd);
+    //DeleteObject(hProcess);
 
     return 0;
 }
