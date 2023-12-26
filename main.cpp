@@ -46,13 +46,13 @@ struct Triangle2D {
     POINT points[3];
 };
 
-void WindowProcess(HWND &hwnd);
+bool WindowProcess();
 void WindowDraw(std::vector<Triangle2D> &triangles, HWND &hwnd);
 
 void rendererMain(HWND &hwnd) {
-    while(true) {
+    while(WindowProcess()) {
 
-        //accumulate triangle2ds to render
+        // accumulate triangle2ds to render
         std::vector<Triangle2D> triangles;
         for (const auto& triangle3D : meshCube.triangles) {
             Triangle2D triangle2D;
@@ -65,10 +65,8 @@ void rendererMain(HWND &hwnd) {
             triangles.push_back(triangle2D);
         }
 
-        WindowProcess(hwnd);
-        //render triangle2ds and clear list
+        // render triangle2ds
         WindowDraw(triangles, hwnd);
-        triangles.clear();
     }
 }
 
@@ -86,13 +84,15 @@ int screenWidth = 0;
 int screenHeight = 0;
 
 void WindowDraw(std::vector<Triangle2D> &triangles, HWND &hwnd) {
+    // todo: Performance: Generating GDI objects (CreateSolidBrush, CreatePen) inside a loop might impact performance, especially if the loop iterates frequently or handles a large number of triangles. It's more efficient to reuse existing GDI objects where possible.
+
     HDC hdc = GetDC(hwnd);
 
     // Clear window screen rect
     RECT clientRect;
     GetClientRect(hwnd, &clientRect);
 
-    //Fill entire screen with specified background color
+    // Fill entire screen with specified background color
     HBRUSH hBackgroundBrush = CreateSolidBrush(backgroundColor);
     FillRect(hdcBuffer, &clientRect, hBackgroundBrush);
     DeleteObject(hBackgroundBrush);
@@ -115,19 +115,19 @@ void WindowDraw(std::vector<Triangle2D> &triangles, HWND &hwnd) {
         DeleteObject(hRgn);
         DeleteObject(hBrush1);
         DeleteObject(hPen);
-        //DeleteObject(hBrush);
+        // DeleteObject(hBrush);
     }
     
     BitBlt(hdc, 0, 0, screenWidth, screenHeight, hdcBuffer, 0, 0, SRCCOPY);
     ReleaseDC(hwnd, hdc);
-    DeleteDC(hdc);//needed?
 }
 
-void WindowProcess(HWND &hwnd) {
+bool WindowProcess() {
     MSG msg = {};
-    PeekMessage(&msg, hwnd, 0, 0, PM_REMOVE);
+    PeekMessage(&msg, NULL, 0, 0, PM_REMOVE);
     TranslateMessage(&msg);
     DispatchMessage(&msg);
+    return msg.message != WM_QUIT;
 }
 
 // Window procedure to handle messages for the main window
@@ -139,7 +139,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             return 0;
         }
         case WM_DESTROY:
-            break;  //hackery fix .. no cleanup (-mwindows no exit bug); solid loop code and break on quit msg?
+            PostQuitMessage(0);
+            return 0;
         default:
             return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
@@ -168,7 +169,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
-    // Init buffer (make sure you understand!)
+    // Init buffer todo: make sure to precisely understand
     RECT clientRect;
     GetClientRect(hwnd, &clientRect);
     screenWidth = clientRect.right - clientRect.left;
@@ -180,28 +181,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // start main renderer process <-
     rendererMain(hwnd);
 
-    //Release Buffer
+    // Release Buffer
     SelectObject(hdcBuffer, hOldBitmap);
     DeleteObject(hBitmap);
     DeleteDC(hdcBuffer);
     DeleteObject(hdcBuffer);
 
-    //kill app (grr not working because of -mwindows)
-    /*PostQuitMessage(0);
-    DestroyWindow(hwnd);
-    MSG msg = {};
-    while (GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-    ExitProcess(0);
-    DWORD dwProcessId = 0;
-    GetWindowThreadProcessId(hwnd, &dwProcessId);
-    HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, dwProcessId);
-    TerminateProcess(hProcess, 0);*/
-
     DeleteObject(hwnd);
-    //DeleteObject(hProcess);
 
     return 0;
 }
