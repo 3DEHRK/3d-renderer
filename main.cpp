@@ -1,6 +1,5 @@
 #include <windows.h>
 #include <vector>
-#include <cstdlib>
 #include <string>
 
 struct Vector3D {
@@ -52,49 +51,43 @@ void WindowDraw(std::vector<Triangle2D> &triangles);
 
 void rendererMain() {
     while(WindowProcess()) {
-        // accumulate triangle2ds to render
         std::vector<Triangle2D> triangles;
         for (const auto& triangle3D : meshCube.triangles) {
             Triangle2D triangle2D;
             for (int i = 0; i < 3; ++i) {
-                // Create 2D points by removing the z-component
                 triangle2D.points[i].x = static_cast<LONG>(triangle3D.vertices[i].x*4000/static_cast<LONG>(triangle3D.vertices[i].z+10.f));
                 triangle2D.points[i].y = static_cast<LONG>(triangle3D.vertices[i].y*4000/static_cast<LONG>(triangle3D.vertices[i].z+10.f));
             }
-            // Push back the generated 2D triangle
             triangles.push_back(triangle2D);
         }
-        // render triangle2ds
         WindowDraw(triangles);
     }
 }
 
 
-// --- LOW LEVEL WIN32 GDI WINDOW STUFF ---
+// --- WIN32 & GDI: WINDOW MANAGEMENT ---
 
-// Declare general window variables
-const std::string WINDOW_TITLE = "Laurin's 3D Renderer";
+// General window variables
+std::string windowTitle = "Laurin's 3D Renderer";
+COLORREF backgroundColor = RGB(0, 0, 0);
+int initialWindowWidth = 1080;
+int initialWindowHeight = 720;
+
 int frames = 0;
 POINT mousePos = { 0, 0 };
-COLORREF backgroundColor = RGB(0, 0, 0);
 HWND hwnd = NULL;
 
 // Declare a global off-screen buffer and its device context
 HDC hdcBuffer = NULL;
 HBITMAP hBitmap = NULL;
 HBITMAP hOldBitmap = NULL;
-int screenWidth = 0;
-int screenHeight = 0;
+int bufferWidth = 0;
+int bufferHeight = 0;
 
 void WindowDraw(std::vector<Triangle2D> &triangles) {
-    // todo: Performance: Generating GDI objects (CreateSolidBrush, CreatePen) inside a loop might impact performance, especially if the loop iterates frequently or handles a large number of triangles. It's more efficient to reuse existing GDI objects where possible.
-    HDC hdc = GetDC(hwnd);
-
-    // Clear window screen rect
+    // Clear screen with background color
     RECT clientRect;
     GetClientRect(hwnd, &clientRect);
-
-    // Fill entire screen with specified background color
     HBRUSH hBackgroundBrush = CreateSolidBrush(backgroundColor);
     FillRect(hdcBuffer, &clientRect, hBackgroundBrush);
     DeleteObject(hBackgroundBrush);
@@ -103,33 +96,37 @@ void WindowDraw(std::vector<Triangle2D> &triangles) {
         // Create a region from the triangle's vertices
         HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
 
-        // Fill the created region with the desired color
+        // Fill the created region
         HBRUSH hBrush = CreateSolidBrush(RGB(20, 20, 20));
         HBRUSH hBrush1 = CreateSolidBrush(RGB(0, 0, 255));
         FillRgn(hdcBuffer, hRgn, hBrush);
 
-        // Draw the outline of the region with a different color (here: black)
+        // Draw outline
         HPEN hPen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
         SelectObject(hdcBuffer, hPen);
         FrameRgn(hdcBuffer, hRgn, hBrush1, 1, 1);
 
-        // Clean up: delete the created region and brush to release resources
         DeleteObject(hRgn);
         DeleteObject(hBrush1);
         DeleteObject(hPen);
         DeleteObject(hBrush);
     }
-    BitBlt(hdc, 0, 0, screenWidth, screenHeight, hdcBuffer, 0, 0, SRCCOPY);
-    frames++;
+    // Copy buffer to screen
+    HDC hdc = GetDC(hwnd);
+    BitBlt(hdc, 0, 0, bufferWidth, bufferHeight, hdcBuffer, 0, 0, SRCCOPY);
     ReleaseDC(hwnd, hdc);
+    frames++;
 }
 
 bool WindowProcess() {
     MSG msg = {};
-    PeekMessage(&msg, NULL, 0, 0, PM_REMOVE);
-    TranslateMessage(&msg);
-    DispatchMessage(&msg);
-    return msg.message != WM_QUIT;
+    while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+        if (msg.message == WM_QUIT)
+            return false;
+    }
+    return true;
 }
 
 // Window procedure to handle messages for the main window
@@ -140,15 +137,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             mousePos.y = HIWORD(lParam);
             return 0;
         }
-        case WM_DESTROY:
-            PostQuitMessage(0);
-            return 0;
         case WM_TIMER: {
-            const std::string title = WINDOW_TITLE + " | FPS " + std::to_string(frames);
+            const std::string title = windowTitle + " | FPS " + std::to_string(frames);
             SetWindowText(hwnd, title.c_str());
             frames = 0;
             return 0;
         }
+        case WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
         default:
             return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
@@ -167,26 +164,27 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     hwnd = CreateWindowEx(
         0,                          // Optional window styles
         "3DRendererWindowClass",    // Window class
-        WINDOW_TITLE.c_str(),       // Window title
+        windowTitle.c_str(),        // Window title
         WS_OVERLAPPEDWINDOW,        // Window style
         CW_USEDEFAULT, CW_USEDEFAULT, 1080, 720, // Size and position
         NULL, NULL, hInstance, NULL // Parent window, menu, instance handle, additional app data
     );
     ShowWindow(hwnd, nCmdShow);
 
-    // Init buffer todo: make sure to precisely understand
+    // Initialize buffer
+    // todo: make sure to precisely understand, recreate on resize?
     RECT clientRect;
     GetClientRect(hwnd, &clientRect);
-    screenWidth = clientRect.right - clientRect.left;
-    screenHeight = clientRect.bottom - clientRect.top;
+    bufferWidth = clientRect.right - clientRect.left;
+    bufferHeight = clientRect.bottom - clientRect.top;
     hdcBuffer = CreateCompatibleDC(NULL);
-    hBitmap = CreateCompatibleBitmap(GetDC(hwnd), screenWidth, screenHeight);
+    hBitmap = CreateCompatibleBitmap(GetDC(hwnd), bufferWidth, bufferHeight);
     hOldBitmap = (HBITMAP)SelectObject(hdcBuffer, hBitmap);
 
     // Set FPS Timer
     SetTimer(hwnd, 1, 1000, NULL);
 
-    // start main renderer process <-
+    // Start main renderer process
     rendererMain();
 
     // Release Buffer
