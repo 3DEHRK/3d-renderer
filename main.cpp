@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <vector>
 #include <cstdlib>
+#include <string>
 
 struct Vector3D {
     float x, y, z;
@@ -47,11 +48,10 @@ struct Triangle2D {
 };
 
 bool WindowProcess();
-void WindowDraw(std::vector<Triangle2D> &triangles, HWND &hwnd);
+void WindowDraw(std::vector<Triangle2D> &triangles);
 
-void rendererMain(HWND &hwnd) {
+void rendererMain() {
     while(WindowProcess()) {
-
         // accumulate triangle2ds to render
         std::vector<Triangle2D> triangles;
         for (const auto& triangle3D : meshCube.triangles) {
@@ -64,17 +64,20 @@ void rendererMain(HWND &hwnd) {
             // Push back the generated 2D triangle
             triangles.push_back(triangle2D);
         }
-
         // render triangle2ds
-        WindowDraw(triangles, hwnd);
+        WindowDraw(triangles);
     }
 }
 
 
 // --- LOW LEVEL WIN32 GDI WINDOW STUFF ---
 
+// Declare general window variables
+const std::string WINDOW_TITLE = "Laurin's 3D Renderer";
+int frames = 0;
 POINT mousePos = { 0, 0 };
 COLORREF backgroundColor = RGB(0, 0, 0);
+HWND hwnd = NULL;
 
 // Declare a global off-screen buffer and its device context
 HDC hdcBuffer = NULL;
@@ -83,9 +86,8 @@ HBITMAP hOldBitmap = NULL;
 int screenWidth = 0;
 int screenHeight = 0;
 
-void WindowDraw(std::vector<Triangle2D> &triangles, HWND &hwnd) {
+void WindowDraw(std::vector<Triangle2D> &triangles) {
     // todo: Performance: Generating GDI objects (CreateSolidBrush, CreatePen) inside a loop might impact performance, especially if the loop iterates frequently or handles a large number of triangles. It's more efficient to reuse existing GDI objects where possible.
-
     HDC hdc = GetDC(hwnd);
 
     // Clear window screen rect
@@ -102,9 +104,9 @@ void WindowDraw(std::vector<Triangle2D> &triangles, HWND &hwnd) {
         HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
 
         // Fill the created region with the desired color
-        //HBRUSH hBrush = CreateSolidBrush(RGB(20, 20, 20));
-        HBRUSH hBrush1 = CreateSolidBrush(RGB(rand(), 0, 255));
-        //FillRgn(hdcBuffer, hRgn, hBrush);
+        HBRUSH hBrush = CreateSolidBrush(RGB(20, 20, 20));
+        HBRUSH hBrush1 = CreateSolidBrush(RGB(0, 0, 255));
+        FillRgn(hdcBuffer, hRgn, hBrush);
 
         // Draw the outline of the region with a different color (here: black)
         HPEN hPen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
@@ -115,10 +117,10 @@ void WindowDraw(std::vector<Triangle2D> &triangles, HWND &hwnd) {
         DeleteObject(hRgn);
         DeleteObject(hBrush1);
         DeleteObject(hPen);
-        // DeleteObject(hBrush);
+        DeleteObject(hBrush);
     }
-    
     BitBlt(hdc, 0, 0, screenWidth, screenHeight, hdcBuffer, 0, 0, SRCCOPY);
+    frames++;
     ReleaseDC(hwnd, hdc);
 }
 
@@ -141,6 +143,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         case WM_DESTROY:
             PostQuitMessage(0);
             return 0;
+        case WM_TIMER: {
+            const std::string title = WINDOW_TITLE + " | FPS " + std::to_string(frames);
+            SetWindowText(hwnd, title.c_str());
+            frames = 0;
+            return 0;
+        }
         default:
             return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
@@ -156,18 +164,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     RegisterClass(&wc);
 
     // Create the window
-    HWND hwnd = CreateWindowEx(
+    hwnd = CreateWindowEx(
         0,                          // Optional window styles
         "3DRendererWindowClass",    // Window class
-        "Laurin's sophisticated 3D Renderer", // Window title
+        WINDOW_TITLE.c_str(),       // Window title
         WS_OVERLAPPEDWINDOW,        // Window style
         CW_USEDEFAULT, CW_USEDEFAULT, 1080, 720, // Size and position
         NULL, NULL, hInstance, NULL // Parent window, menu, instance handle, additional app data
     );
-
-    // Show the window
     ShowWindow(hwnd, nCmdShow);
-    UpdateWindow(hwnd);
 
     // Init buffer todo: make sure to precisely understand
     RECT clientRect;
@@ -178,8 +183,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     hBitmap = CreateCompatibleBitmap(GetDC(hwnd), screenWidth, screenHeight);
     hOldBitmap = (HBITMAP)SelectObject(hdcBuffer, hBitmap);
 
+    // Set FPS Timer
+    SetTimer(hwnd, 1, 1000, NULL);
+
     // start main renderer process <-
-    rendererMain(hwnd);
+    rendererMain();
 
     // Release Buffer
     SelectObject(hdcBuffer, hOldBitmap);
@@ -188,6 +196,5 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     DeleteObject(hdcBuffer);
 
     DeleteObject(hwnd);
-
     return 0;
 }
