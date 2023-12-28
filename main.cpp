@@ -70,22 +70,18 @@ void rendererMain() {
 // General window variables
 std::string windowTitle = "Laurin's 3D Renderer";
 COLORREF backgroundColor = RGB(0, 0, 0);
-int initialWindowWidth = 1080;
-int initialWindowHeight = 720;
+UINT windowWidth = 1080;
+UINT windowHeight = 720;
 
-int frames = 0;
 POINT mousePos = { 0, 0 };
+int frames = 0;
 HWND hwnd = NULL;
-
-// Declare a global off-screen buffer and its device context
+HDC hdc = NULL;
 HDC hdcBuffer = NULL;
 HBITMAP hBitmap = NULL;
-HBITMAP hOldBitmap = NULL;
-int bufferWidth = 0;
-int bufferHeight = 0;
 
 void WindowDraw(std::vector<Triangle2D> &triangles) {
-    // Clear screen with background color
+    // Clear the screen with a background color
     RECT clientRect;
     GetClientRect(hwnd, &clientRect);
     HBRUSH hBackgroundBrush = CreateSolidBrush(backgroundColor);
@@ -98,23 +94,18 @@ void WindowDraw(std::vector<Triangle2D> &triangles) {
 
         // Fill the created region
         HBRUSH hBrush = CreateSolidBrush(RGB(20, 20, 20));
-        HBRUSH hBrush1 = CreateSolidBrush(RGB(0, 0, 255));
+        HBRUSH hBrushFrame = CreateSolidBrush(RGB(0, 0, 255));
         FillRgn(hdcBuffer, hRgn, hBrush);
 
-        // Draw outline
-        HPEN hPen = CreatePen(PS_SOLID, 1, RGB(255, 255, 255));
-        SelectObject(hdcBuffer, hPen);
-        FrameRgn(hdcBuffer, hRgn, hBrush1, 1, 1);
+        // Draw an outline for debugging
+        FrameRgn(hdcBuffer, hRgn, hBrushFrame, 1, 1); // -> extremely expensive
 
         DeleteObject(hRgn);
-        DeleteObject(hBrush1);
-        DeleteObject(hPen);
+        DeleteObject(hBrushFrame);
         DeleteObject(hBrush);
     }
-    // Copy buffer to screen
-    HDC hdc = GetDC(hwnd);
-    BitBlt(hdc, 0, 0, bufferWidth, bufferHeight, hdcBuffer, 0, 0, SRCCOPY);
-    ReleaseDC(hwnd, hdc);
+    // Copy the buffer to screen
+    BitBlt(hdc, 0, 0, windowWidth, windowHeight, hdcBuffer, 0, 0, SRCCOPY);
     frames++;
 }
 
@@ -129,7 +120,7 @@ bool WindowProcess() {
     return true;
 }
 
-// Window procedure to handle messages for the main window
+// Window procedure to handle messages for the window
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
         case WM_MOUSEMOVE: {
@@ -141,6 +132,18 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             const std::string title = windowTitle + " | FPS " + std::to_string(frames);
             SetWindowText(hwnd, title.c_str());
             frames = 0;
+            return 0;
+        }
+        case WM_SIZE: {
+            windowWidth = LOWORD(lParam);
+            windowHeight = HIWORD(lParam);
+            // Release buffer
+            DeleteObject(hBitmap);
+            DeleteDC(hdcBuffer);
+            // Create new buffer
+            hdcBuffer = CreateCompatibleDC(NULL);
+            hBitmap = CreateCompatibleBitmap(hdc, windowWidth, windowHeight);
+            SelectObject(hdcBuffer, hBitmap);
             return 0;
         }
         case WM_DESTROY:
@@ -166,33 +169,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         "3DRendererWindowClass",    // Window class
         windowTitle.c_str(),        // Window title
         WS_OVERLAPPEDWINDOW,        // Window style
-        CW_USEDEFAULT, CW_USEDEFAULT, 1080, 720, // Size and position
+        CW_USEDEFAULT, CW_USEDEFAULT, windowWidth, windowHeight, // Size and position
         NULL, NULL, hInstance, NULL // Parent window, menu, instance handle, additional app data
     );
     ShowWindow(hwnd, nCmdShow);
+    hdc = GetDC(hwnd);
 
     // Initialize buffer
-    // todo: make sure to precisely understand, recreate on resize?
-    RECT clientRect;
-    GetClientRect(hwnd, &clientRect);
-    bufferWidth = clientRect.right - clientRect.left;
-    bufferHeight = clientRect.bottom - clientRect.top;
     hdcBuffer = CreateCompatibleDC(NULL);
-    hBitmap = CreateCompatibleBitmap(GetDC(hwnd), bufferWidth, bufferHeight);
-    hOldBitmap = (HBITMAP)SelectObject(hdcBuffer, hBitmap);
+    hBitmap = CreateCompatibleBitmap(hdc, windowWidth, windowHeight);
+    SelectObject(hdcBuffer, hBitmap);
 
     // Set FPS Timer
     SetTimer(hwnd, 1, 1000, NULL);
 
-    // Start main renderer process
+    // *** Start main process ***
     rendererMain();
 
-    // Release Buffer
-    SelectObject(hdcBuffer, hOldBitmap);
     DeleteObject(hBitmap);
     DeleteDC(hdcBuffer);
-    DeleteObject(hdcBuffer);
-
-    DeleteObject(hwnd);
+    DeleteDC(hdc);
     return 0;
 }
