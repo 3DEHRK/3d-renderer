@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 
+// 3D space structures
 struct Vector3D {
     float x, y, z;
 };
@@ -15,28 +16,106 @@ struct Mesh3D {
     std::vector<Triangle3D> triangles;
 };
 
-Mesh3D meshCube = {
+// User defined matrix type
+class Matrix {
+public:
+    Matrix(int m_, int n_, std::initializer_list<float> initList = {}) : m(m_), n(n_) {  // Create matrix
+        size = m * n;
+        matrix = new float[size];
+        std::copy(initList.begin(), initList.end(), matrix);  // Could be copied manually for performance, not used on vector constructor tho
+    }
+    Matrix(int m_, std::initializer_list<float> initList = {}) : m(m_) {  // Create vector matrix
+        size = m + 1; // 1 space for appending
+        matrix = new float[size];
+        std::copy(initList.begin(), initList.end(), matrix);
+    }
+    Matrix(Vector3D vector) {  // Create vector matrix by Vector3D
+        m = 3;
+        size = m + 1; // 1 space for appending
+        matrix = new float[size];
+        matrix[0] = vector.x;
+        matrix[1] = vector.y;
+        matrix[2] = vector.z;
+    }
+    ~Matrix() {  // Free memory
+        delete[] matrix;
+    }
 
+    Matrix operator*(Matrix& other) {
+        Matrix product(m, other.nGet());
+        for (int i1 = 0; i1 != m; ++i1) {
+            for (int j2 = 0; j2 != other.nGet(); ++j2) {
+                float accu = 0;
+                for (int t = 0; t != n; ++t) {
+                    accu += get(i1, t) * other.get(t, j2);
+                }
+                product.set(accu, i1, j2);
+            }
+        }
+        for (int i = 0; i != product.mGet(); ++i) {
+            for (int i1 = 0; i1 != product.nGet(); ++i1) {
+            }
+        }
+        return product;  // Broken, new object contains garbage!
+    }
+
+    void vectorAppend(float value) {
+        if (n != 1) return;  // throw
+        appendResizeCheck();
+        matrix[m++] = value;
+    }
+
+    float vectorRemove() {
+        if (n != 1) return -1.f;  // throw
+        return matrix[--m];
+    }
+
+    float get(int i_, int j_ = 0) {  // replace with [][], get by index?
+        return matrix[i_*n+j_];
+    }
+
+    void set(float v, int i_, int j_ = 0) {
+        matrix[i_*n+j_] = v;
+    }
+
+    float mGet() { return m; }
+    float nGet() { return n; }
+
+private:
+    float* matrix;
+    int m = 1;
+    int n = 1;
+    int size = 0;
+
+    void appendResizeCheck() {
+        if (size < m + 1) {
+            float* matrixNew = new float[m + 1];
+            for (int i = 0; i != size; ++i) {
+                matrixNew[i] = matrix[i];
+            }
+            delete[] matrix;
+            matrix = matrixNew;
+            size = m + 1;
+        }
+    }
+};
+
+Mesh3D meshCube = {
     // South Face
     { 0.f, 0.f, 0.f,   0.f, 1.f, 0.f,   1.f, 1.f, 0.f},
     { 0.f, 0.f, 0.f,   1.f, 1.f, 0.f,   1.f, 0.f, 0.f},
-
     // East face
     { 1.f, 0.f, 0.f,   1.f, 1.f, 0.f,   1.f, 1.f, 1.f },
     { 1.f, 0.f, 0.f,   1.f, 1.f, 1.f,   1.f, 0.f, 1.f },
-
     // North face
     { 1.f, 0.f, 1.f,   1.f, 1.f, 1.f,   0.f, 1.f, 1.f },
     { 1.f, 0.f, 1.f,   0.f, 1.f, 1.f,   0.f, 0.f, 1.f },
-
     // West face
     { 0.f, 0.f, 1.f,   0.f, 1.f, 1.f,   0.f, 1.f, 0.f },
     { 0.f, 0.f, 1.f,   0.f, 1.f, 0.f,   0.f, 0.f, 0.f },
-
     // Top face
     { 0.f, 1.f, 0.f,   0.f, 1.f, 1.f,   1.f, 1.f, 1.f },
     { 0.f, 1.f, 0.f,   1.f, 1.f, 1.f,   1.f, 1.f, 0.f },
-
     // Bottom face
     { 0.f, 0.f, 0.f,   0.f, 0.f, 1.f,   1.f, 0.f, 1.f },
     { 0.f, 0.f, 0.f,   1.f, 0.f, 1.f,   1.f, 0.f, 0.f }
