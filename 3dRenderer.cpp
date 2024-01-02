@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <vector>
 #include <string>
+#include <stdexcept>
 
 // 3D space structures
 struct Vector3D {
@@ -20,31 +21,49 @@ struct Mesh3D {
 class Matrix {
 public:
     Matrix(int m_, int n_, std::initializer_list<float> initList = {}) : m(m_), n(n_) {  // Create matrix
-        size = m * n;
+        size = m*n;
+        if (n == 1) size++; // appending space if vector
         matrix = new float[size];
-        std::copy(initList.begin(), initList.end(), matrix);  // Could be copied manually for performance, not used on vector constructor tho
+
+        if (initList.size()!=0)
+            std::copy(initList.begin(), initList.end(), matrix);
     }
-    Matrix(int m_, std::initializer_list<float> initList = {}) : m(m_) {  // Create vector matrix
-        size = m + 1; // 1 space for appending
+    Matrix(const Matrix& other) : m(other.m), n(other.n) {  // Coppy constructor
+        size = m*n;
+        if (n == 1) size++;
         matrix = new float[size];
-        std::copy(initList.begin(), initList.end(), matrix);
+
+        for (int i = 0; i != size; ++i) {
+            matrix[i] = other.matrix[i];
+        }
     }
-    Matrix(Vector3D vector) {  // Create vector matrix by Vector3D
-        m = 3;
-        size = m + 1; // 1 space for appending
+    Matrix(Vector3D& vector) : m(3) {  // Create vector matrix by Vector3D
+        size = m+1; // space for appending
         matrix = new float[size];
         matrix[0] = vector.x;
         matrix[1] = vector.y;
         matrix[2] = vector.z;
+    }
+    Matrix& operator=(const Matrix& other) {
+        if (m * n != other.m * other.n) throw std::out_of_range("Matrices are of unequal dimensions.");
+        for (int i = 0; i != size; ++i) {
+            matrix[i] = other.matrix[i];
+        }
+        return *this;
+    }
+    Matrix& operator=(std::initializer_list<float> initList) {
+        std::copy(initList.begin(), initList.end(), matrix);
+        return *this;
     }
     ~Matrix() {  // Free memory
         delete[] matrix;
     }
 
     Matrix operator*(Matrix& other) {
-        Matrix product(m, other.nGet());
+        if (m != other.n) throw std::out_of_range("Matrices are of dimensions that cannot be multiplied.");
+        Matrix product(m, other.n);
         for (int i1 = 0; i1 != m; ++i1) {
-            for (int j2 = 0; j2 != other.nGet(); ++j2) {
+            for (int j2 = 0; j2 != other.n; ++j2) {
                 float accu = 0;
                 for (int t = 0; t != n; ++t) {
                     accu += get(i1, t) * other.get(t, j2);
@@ -52,34 +71,30 @@ public:
                 product.set(accu, i1, j2);
             }
         }
-        for (int i = 0; i != product.mGet(); ++i) {
-            for (int i1 = 0; i1 != product.nGet(); ++i1) {
-            }
-        }
-        return product;  // Broken, new object contains garbage!
+        return product;
     }
 
     void vectorAppend(float value) {
-        if (n != 1) return;  // throw
+        if (n != 1) throw std::logic_error("This is not a vector and cannot be appended.");
         appendResizeCheck();
         matrix[m++] = value;
     }
 
     float vectorRemove() {
-        if (n != 1) return -1.f;  // throw
+        if (n != 1) throw std::logic_error("This is not a vector elements cannot be removed.");
         return matrix[--m];
     }
 
-    float get(int i_, int j_ = 0) {  // replace with [][], get by index?
-        return matrix[i_*n+j_];
+    float get(int i_, int j_) {
+        return matrix[i_ * n + j_];
     }
 
-    void set(float v, int i_, int j_ = 0) {
-        matrix[i_*n+j_] = v;
+    void set(float v, int i_, int j_) {
+        matrix[i_ * n + j_] = v;
     }
 
-    float mGet() { return m; }
-    float nGet() { return n; }
+    int mGet() { return m; }
+    int nGet() { return n; }
 
 private:
     float* matrix;
@@ -87,7 +102,7 @@ private:
     int n = 1;
     int size = 0;
 
-    void appendResizeCheck() {
+    void appendResizeCheck() {  // TEST
         if (size < m + 1) {
             float* matrixNew = new float[m + 1];
             for (int i = 0; i != size; ++i) {
