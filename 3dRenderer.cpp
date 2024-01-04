@@ -18,26 +18,26 @@ struct Mesh3D {
 };
 
 // User defined matrix type
-class Matrix {
+class Matrix {  // optimization: make template
 public:
-    Matrix(int m_, int n_, std::initializer_list<float> initList = {}) : m(m_), n(n_) {  // Create matrix
+    Matrix(int m_, int n_, const std::initializer_list<float> initList = {}) : m(m_), n(n_) {  // Create matrix
         size = m*n;
         if (n == 1) size++; // appending space if vector
         matrix = new float[size];
 
-        if (initList.size()!=0)
-            std::copy(initList.begin(), initList.end(), matrix);
+        if (initList.size() > m*n) throw std::length_error("Initializer list too long.");
+        std::copy(initList.begin(), initList.end(), matrix);
     }
-    Matrix(const Matrix& other) : m(other.m), n(other.n) {  // Coppy constructor
+    Matrix(const Matrix& other) : m(other.m), n(other.n) {  // Copy constructor
         size = m*n;
         if (n == 1) size++;
         matrix = new float[size];
 
-        for (int i = 0; i != size; ++i) {
+        for (int i = 0; i != m*n; ++i) {
             matrix[i] = other.matrix[i];
         }
     }
-    Matrix(Vector3D& vector) : m(3) {  // Create vector matrix by Vector3D
+    Matrix(const Vector3D& vector) : m(3) {  // Create vector matrix by Vector3D
         size = m+1; // space for appending
         matrix = new float[size];
         matrix[0] = vector.x;
@@ -45,22 +45,24 @@ public:
         matrix[2] = vector.z;
     }
     Matrix& operator=(const Matrix& other) {
+        if (this == &other) return *this;
         if (m * n != other.m * other.n) throw std::out_of_range("Matrices are of unequal dimensions.");
-        for (int i = 0; i != size; ++i) {
+        for (int i = 0; i != m*n; ++i) {
             matrix[i] = other.matrix[i];
         }
         return *this;
     }
-    Matrix& operator=(std::initializer_list<float> initList) {
+    Matrix& operator=(const std::initializer_list<float> initList) {  // Assign raw values
+        if (initList.size() > m*n) throw std::length_error("Initializer list too long.");
         std::copy(initList.begin(), initList.end(), matrix);
         return *this;
     }
-    ~Matrix() {  // Free memory
+    ~Matrix() {
         delete[] matrix;
     }
 
-    Matrix operator*(Matrix& other) {
-        if (m != other.n) throw std::out_of_range("Matrices are of dimensions that cannot be multiplied.");
+    Matrix operator*(const Matrix& other) {
+        if (n != other.m) throw std::out_of_range("Matrices are of dimensions that cannot be multiplied.");
         Matrix product(m, other.n);
         for (int i1 = 0; i1 != m; ++i1) {
             for (int j2 = 0; j2 != other.n; ++j2) {
@@ -68,10 +70,30 @@ public:
                 for (int t = 0; t != n; ++t) {
                     accu += get(i1, t) * other.get(t, j2);
                 }
-                product.set(accu, i1, j2);
+                product.set(i1, j2, accu);
             }
         }
         return product;
+    }
+    Matrix operator+(const Matrix& other) {
+        if (m != other.m || n != other.n) throw std::out_of_range("Matrices are of unequal dimensions and cannot be added.");
+        Matrix sum(m, n);
+        for (int i = 0; i != m; ++i) {
+            for (int j = 0; j != n; ++j) {
+                sum.set(i, j, get(i, j) + other.get(i, j));
+            }
+        }
+        return sum;
+    }
+    Matrix operator-(const Matrix& other) {
+        if (m != other.m || n != other.n) throw std::out_of_range("Matrices are of unequal dimensions and cannot be subtracted.");
+        Matrix difference(m, n);
+        for (int i = 0; i != m; ++i) {
+            for (int j = 0; j != n; ++j) {
+                difference.set(i, j, get(i, j) - other.get(i, j));
+            }
+        }
+        return difference;
     }
 
     void vectorAppend(float value) {
@@ -79,22 +101,23 @@ public:
         appendResizeCheck();
         matrix[m++] = value;
     }
-
     float vectorRemove() {
         if (n != 1) throw std::logic_error("This is not a vector elements cannot be removed.");
+        if (m == 0) throw std::out_of_range("Vector is already empty.");
         return matrix[--m];
     }
 
-    float get(int i_, int j_) {
+    float get(int i_, int j_) const {
+        if (i_ > m || j_ > n) throw std::out_of_range("Element is not in the matrix bounds.");
         return matrix[i_ * n + j_];
     }
-
-    void set(float v, int i_, int j_) {
+    void set(int i_, int j_, float v) {
+        if (i_ > m || j_ > n) throw std::out_of_range("Element is not in the matrix bounds.");
         matrix[i_ * n + j_] = v;
     }
 
-    int mGet() { return m; }
-    int nGet() { return n; }
+    int mGet() const { return m; }
+    int nGet() const { return n; }
 
 private:
     float* matrix;
@@ -102,15 +125,15 @@ private:
     int n = 1;
     int size = 0;
 
-    void appendResizeCheck() {  // TEST
+    void appendResizeCheck() {
         if (size < m + 1) {
-            float* matrixNew = new float[m + 1];
+            float* matrixNew = new float[m + 2];
             for (int i = 0; i != size; ++i) {
                 matrixNew[i] = matrix[i];
             }
             delete[] matrix;
             matrix = matrixNew;
-            size = m + 1;
+            size = m + 2;
         }
     }
 };

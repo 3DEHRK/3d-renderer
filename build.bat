@@ -1,6 +1,6 @@
 @echo off
 
-g++ -static-libgcc -static-libstdc++ -mwindows -o 3dRenderer.exe 3dRenderer.cpp -lgdi32
+g++ -o 3dRenderer.exe 3dRenderer.cpp -static-libgcc -static -lmcfgthread -static-libstdc++ -mwindows -lgdi32
 
 if errorlevel 1 (
 	echo Make sure Mingw32 is installed and path variable set
