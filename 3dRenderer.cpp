@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <cmath>
 
 // 3D space structures
 struct Vector3D {
@@ -166,16 +167,84 @@ struct Triangle2D {
 bool WindowProcess();
 void WindowDraw(std::vector<Triangle2D> &triangles);
 
+UINT windowWidth = 1080;
+UINT windowHeight = 720;
+POINT mousePos = { 0, 0 };
+float fieldOfView = 90.f;
+
 void rendererMain() {
     while(WindowProcess()) {
         std::vector<Triangle2D> triangles;
-        for (const auto& triangle3D : meshCube.triangles) {
-            Triangle2D triangle2D;
-            for (int i = 0; i < 3; ++i) {
-                triangle2D.points[i].x = static_cast<LONG>(triangle3D.vertices[i].x*4000/static_cast<LONG>(triangle3D.vertices[i].z+10.f));
-                triangle2D.points[i].y = static_cast<LONG>(triangle3D.vertices[i].y*4000/static_cast<LONG>(triangle3D.vertices[i].z+10.f));
+
+        // --- TRANSFORMATION ---
+
+        float y = (float) mousePos.x * 6 / (float) windowWidth; // y rotation
+        Matrix rotationMatrixY(3, 3, {
+            cosf(y),  0.f,  sinf(y),
+            0.f,      1.f,      0.f,
+            -sinf(y), 0.f,  cosf(y)
+        });
+
+        float x = (float) mousePos.y * 6 / (float) windowHeight; // x rotation
+        Matrix rotationMatrixX(3, 3, {
+            1.f,  0.f,          0.f,
+            0.f,  cosf(x), -sinf(x),
+            0.f,  sinf(x),  cosf(x)
+        });
+
+        Mesh3D meshCubeTransformed = meshCube;
+
+        for (Triangle3D& triangle3dTransformed : meshCubeTransformed.triangles) {
+            for (Vector3D& vector3d : triangle3dTransformed.vertices) {
+                Matrix vector(vector3d);
+
+                vector = rotationMatrixY * vector; // rotate y
+                vector = rotationMatrixX * vector; // rotate x
+
+                vector3d.x = vector.get(0,0);
+                vector3d.y = vector.get(1,0);
+                vector3d.z = vector.get(2,0);
+
+                vector3d.z =+ 10.f; // apply distance to camera
             }
-            triangles.push_back(triangle2D);
+        }
+
+        // --- PROJECTION ---
+
+        float n = 0.1f; // near plane distance
+        float f = 1000.f; // far plane distance
+        float a = (float)windowHeight / (float)windowWidth; // viewing aspect ratio
+        float v = 1.f / tanf(fieldOfView * 0.5f / 180.f * 3.14159f); // field of view scalar
+        Matrix projectionMatrix(4, 4, {
+            a*v,  0.f,  0.f,          0.f,
+            0.f,  v,    0.f,          0.f,
+            0.f,  0.f,  f/(f-n),      1.f,
+            0.f,  0.f,  (-f*n)/(f-n), 0.f
+        });
+
+        for (const Triangle3D& triangle3d : meshCubeTransformed.triangles) {
+            Triangle2D triangle2d;
+
+            for (int i = 0; i != 3; ++i){
+                Matrix vector(triangle3d.vertices[i]);
+
+                vector.vectorAppend(1);
+                vector = projectionMatrix * vector;
+
+                float w = vector.vectorRemove();
+                if (w == 0) w = n;
+                Matrix normalizationMatrix(3, 3, {
+                    1.f/w, 0.f,   0.f,
+                    0.f,   1.f/w, 0.f,
+                    0.f,   0.f,   1.f/w
+                });
+                
+                vector = normalizationMatrix * vector;
+
+                triangle2d.points[i].x = (vector.get(0,0) + 1.f) * 0.5f * (float)windowWidth; // scale vector onto window
+                triangle2d.points[i].y = (vector.get(1,0) + 1.f) * 0.5f * (float)windowHeight; // scale vector onto window
+            }
+            triangles.push_back(triangle2d);
         }
         WindowDraw(triangles);
     }
@@ -187,10 +256,10 @@ void rendererMain() {
 // General window variables
 std::string windowTitle = "Laurin's 3D Renderer";
 COLORREF backgroundColor = RGB(0, 0, 0);
-UINT windowWidth = 1080;
-UINT windowHeight = 720;
+// UINT windowWidth = 1080; (defined above)
+// UINT windowHeight = 720; (defined above)
 
-POINT mousePos = { 0, 0 };
+// POINT mousePos = { 0, 0 }; (defined above)
 int frames = 0;
 HWND hwnd = NULL;
 HDC hdc = NULL;
@@ -211,15 +280,21 @@ void WindowDraw(std::vector<Triangle2D> &triangles) {
 
         // Fill the created region
         HBRUSH hBrush = CreateSolidBrush(RGB(20, 20, 20));
-        HBRUSH hBrushFrame = CreateSolidBrush(RGB(0, 0, 255));
         FillRgn(hdcBuffer, hRgn, hBrush);
 
-        // Draw an outline for debugging
-        FrameRgn(hdcBuffer, hRgn, hBrushFrame, 1, 1); // -> extremely expensive
+        // Draw triangle outline for debugging
+        HPEN hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
+        SelectObject(hdcBuffer, hPen);
+        MoveToEx(hdcBuffer, triangle.points[0].x, triangle.points[0].y, NULL);
+        LineTo(hdcBuffer, triangle.points[1].x, triangle.points[1].y);
+        MoveToEx(hdcBuffer, triangle.points[1].x, triangle.points[1].y, NULL);
+        LineTo(hdcBuffer, triangle.points[2].x, triangle.points[2].y);
+        MoveToEx(hdcBuffer, triangle.points[2].x, triangle.points[2].y, NULL);
+        LineTo(hdcBuffer, triangle.points[0].x, triangle.points[0].y);
 
         DeleteObject(hRgn);
-        DeleteObject(hBrushFrame);
         DeleteObject(hBrush);
+        DeleteObject(hPen);
     }
     // Copy the buffer to screen
     BitBlt(hdc, 0, 0, windowWidth, windowHeight, hdcBuffer, 0, 0, SRCCOPY);
