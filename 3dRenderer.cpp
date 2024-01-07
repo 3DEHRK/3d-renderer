@@ -3,6 +3,7 @@
 #include <string>
 #include <stdexcept>
 #include <cmath>
+#include <algorithm>
 
 // 3D space structures
 struct Vector3D {
@@ -10,6 +11,8 @@ struct Vector3D {
 };
 
 struct Triangle3D {
+    Vector3D& operator[](int i) { return vertices[i]; }
+    Vector3D operator[](int i) const { return vertices[i]; }
     Vector3D vertices[3];
 };
 
@@ -141,24 +144,28 @@ private:
 
 Mesh3D meshCube = {
     // South Face
-    { 0.f, 0.f, 0.f,   0.f, 1.f, 0.f,   1.f, 1.f, 0.f},
-    { 0.f, 0.f, 0.f,   1.f, 1.f, 0.f,   1.f, 0.f, 0.f},
+    { -1.f, -1.f, -1.f,   -1.f, 1.f, -1.f,   1.f, 1.f, -1.f},
+    { -1.f, -1.f, -1.f,   1.f, 1.f, -1.f,   1.f, -1.f, -1.f},
     // East face
-    { 1.f, 0.f, 0.f,   1.f, 1.f, 0.f,   1.f, 1.f, 1.f },
-    { 1.f, 0.f, 0.f,   1.f, 1.f, 1.f,   1.f, 0.f, 1.f },
+    { 1.f, -1.f, -1.f,   1.f, 1.f, -1.f,   1.f, 1.f, 1.f },
+    { 1.f, -1.f, -1.f,   1.f, 1.f, 1.f,   1.f, -1.f, 1.f },
     // North face
-    { 1.f, 0.f, 1.f,   1.f, 1.f, 1.f,   0.f, 1.f, 1.f },
-    { 1.f, 0.f, 1.f,   0.f, 1.f, 1.f,   0.f, 0.f, 1.f },
+    { 1.f, -1.f, 1.f,   1.f, 1.f, 1.f,   -1.f, 1.f, 1.f },
+    { 1.f, -1.f, 1.f,   -1.f, 1.f, 1.f,   -1.f, -1.f, 1.f },
     // West face
-    { 0.f, 0.f, 1.f,   0.f, 1.f, 1.f,   0.f, 1.f, 0.f },
-    { 0.f, 0.f, 1.f,   0.f, 1.f, 0.f,   0.f, 0.f, 0.f },
+    { -1.f, -1.f, 1.f,   -1.f, 1.f, 1.f,   -1.f, 1.f, -1.f },
+    { -1.f, -1.f, 1.f,   -1.f, 1.f, -1.f,   -1.f, -1.f, -1.f },
     // Top face
-    { 0.f, 1.f, 0.f,   0.f, 1.f, 1.f,   1.f, 1.f, 1.f },
-    { 0.f, 1.f, 0.f,   1.f, 1.f, 1.f,   1.f, 1.f, 0.f },
+    { -1.f, 1.f, -1.f,   -1.f, 1.f, 1.f,   1.f, 1.f, 1.f },
+    { -1.f, 1.f, -1.f,   1.f, 1.f, 1.f,   1.f, 1.f, -1.f },
     // Bottom face
-    { 0.f, 0.f, 0.f,   0.f, 0.f, 1.f,   1.f, 0.f, 1.f },
-    { 0.f, 0.f, 0.f,   1.f, 0.f, 1.f,   1.f, 0.f, 0.f }
+    { -1.f, -1.f, -1.f,   -1.f, -1.f, 1.f,   1.f, -1.f, 1.f },
+    { -1.f, -1.f, -1.f,   1.f, -1.f, 1.f,   1.f, -1.f, -1.f }
 };
+
+bool compareApproximatedDepth(const Triangle3D& triangle3d1, const Triangle3D& triangle3d2) {
+    return triangle3d1[0].z + triangle3d1[1].z + triangle3d2[2].z > triangle3d2[0].z + triangle3d2[1].z + triangle3d2[2].z;
+}
 
 struct Triangle2D {
     POINT points[3];
@@ -166,11 +173,12 @@ struct Triangle2D {
 
 bool WindowProcess();
 void WindowDraw(std::vector<Triangle2D> &triangles);
-
 UINT windowWidth = 1080;
 UINT windowHeight = 720;
 POINT mousePos = { 0, 0 };
-float fieldOfView = 90.f;
+
+float fieldOfView = 80.f;
+float distanceToCamera = 20.f;
 
 void rendererMain() {
     while(WindowProcess()) {
@@ -178,14 +186,14 @@ void rendererMain() {
 
         // --- TRANSFORMATION ---
 
-        float y = (float) mousePos.x * 6 / (float) windowWidth; // y rotation
+        float y = (float) mousePos.x * 10 / (float) windowWidth; // y rotation
         Matrix rotationMatrixY(3, 3, {
             cosf(y),  0.f,  sinf(y),
             0.f,      1.f,      0.f,
             -sinf(y), 0.f,  cosf(y)
         });
 
-        float x = (float) mousePos.y * 6 / (float) windowHeight; // x rotation
+        float x = (float) mousePos.y * 10 / (float) windowHeight; // x rotation
         Matrix rotationMatrixX(3, 3, {
             1.f,  0.f,          0.f,
             0.f,  cosf(x), -sinf(x),
@@ -205,9 +213,12 @@ void rendererMain() {
                 vector3d.y = vector.get(1,0);
                 vector3d.z = vector.get(2,0);
 
-                vector3d.z += 10.f; // apply distance to camera
+                vector3d.z += distanceToCamera; // apply distance to camera
             }
         }
+
+        // sort triangles by depth to get propper overlapping
+        std::sort(meshCubeTransformed.triangles.begin(), meshCubeTransformed.triangles.end(), compareApproximatedDepth);
 
         // --- PROJECTION ---
 
@@ -226,7 +237,7 @@ void rendererMain() {
             Triangle2D triangle2d;
 
             for (int i = 0; i != 3; ++i){
-                Matrix vector(triangle3d.vertices[i]);
+                Matrix vector(triangle3d[i]);
 
                 vector.vectorAppend(1);
                 vector = projectionMatrix * vector;
@@ -279,7 +290,7 @@ void WindowDraw(std::vector<Triangle2D> &triangles) {
         HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
 
         // Fill the created region
-        HBRUSH hBrush = CreateSolidBrush(RGB(20, 20, 20));
+        HBRUSH hBrush = CreateSolidBrush(RGB(25, 25, 25));
         FillRgn(hdcBuffer, hRgn, hBrush);
 
         // Draw triangle outline for debugging
@@ -315,6 +326,12 @@ bool WindowProcess() {
 // Window procedure to handle messages for the window
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
+        case WM_KEYDOWN: {
+            if (wParam == VK_UP)
+                distanceToCamera -= 0.5f;
+            if (wParam == VK_DOWN)
+                distanceToCamera += 0.5f;
+        }
         case WM_MOUSEMOVE: {
             mousePos.x = LOWORD(lParam);
             mousePos.y = HIWORD(lParam);
