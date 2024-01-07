@@ -205,7 +205,7 @@ void rendererMain() {
                 vector3d.y = vector.get(1,0);
                 vector3d.z = vector.get(2,0);
 
-                vector3d.z =+ 10.f; // apply distance to camera
+                vector3d.z += 10.f; // apply distance to camera
             }
         }
 
