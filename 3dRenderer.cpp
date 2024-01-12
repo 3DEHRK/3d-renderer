@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
+#include <iostream>
 
 // 3D space structures
 struct Vector3D {
@@ -99,6 +100,28 @@ public:
         }
         return difference;
     }
+    Matrix T() {
+        Matrix transpose(n, m);
+        for (int i = 0; i != m; ++i) {
+            for (int j = 0; j != n; ++j) {
+                transpose.set(j, i, get(i, j));
+            }
+        }
+        return transpose;
+    }
+    float det() {
+        if (m != 2 || n != 2) throw std::out_of_range("Determinant can only be calculated on 2x2 matrix.");
+        return get(0,0) * get(1,1) - get(0,1) * get(1,0);
+    }
+
+    /*Matrix crossProduct3d(const Matrix& other) {  // Get determinant as 3d vector
+        if (m != 3 || other.m != 3 || n != 1 || other.n != 1) throw std::out_of_range("Cross product can be made from 3D Vectors only.");
+        Matrix crossProduct(3,1);
+        crossProduct.set(0, 0, get(1,0) * other.get(2,0) - get(2,0) * other.get(1,0));
+        crossProduct.set(1, 0, get(2,0) * other.get(0,0) - get(0,0) * other.get(2,0));
+        crossProduct.set(2, 0, get(0,0) * other.get(1,0) - get(1,0) * other.get(0,0));
+        return crossProduct;
+    }*/
 
     void vectorAppend(float value) {
         if (n != 1) throw std::logic_error("This is not a vector and cannot be appended.");
@@ -119,7 +142,12 @@ public:
         if (i_ > m || j_ > n) throw std::out_of_range("Element is not in the matrix bounds.");
         matrix[i_ * n + j_] = v;
     }
-
+    float x() const { return get(0,0); }
+    float y() const { return get(1,0); }
+    float z() const { return get(2,0); }
+    void x(float x) { set(0,0,x); }
+    void y(float y) { set(1,0,y); }
+    void z(float z) { set(2,0,z); }
     int mGet() const { return m; }
     int nGet() const { return n; }
 
@@ -163,10 +191,6 @@ Mesh3D meshCube = {
     { -1.f, -1.f, -1.f,   1.f, -1.f, 1.f,   1.f, -1.f, -1.f }
 };
 
-bool compareApproximatedDepth(const Triangle3D& triangle3d1, const Triangle3D& triangle3d2) {
-    return triangle3d1[0].z + triangle3d1[1].z + triangle3d2[2].z > triangle3d2[0].z + triangle3d2[1].z + triangle3d2[2].z;
-}
-
 struct Triangle2D {
     POINT points[3];
 };
@@ -181,19 +205,45 @@ float fieldOfView = 80.f;
 float distanceToCamera = 20.f;
 
 void rendererMain() {
+    FreeConsole();
+    /*Matrix crossProduct(3,1);
+
+    Matrix vector1(3,1,{1,0,0});
+    Matrix vector2(3,1,{0,0,1});
+
+    Matrix xPair(2,2,{vector1.y(), vector1.z(),
+                      vector2.y(), vector2.z()});
+
+    Matrix yPair(2,2,{vector1.x(), vector1.z(),
+                      vector2.x(), vector2.z()});
+
+    Matrix zPair(2,2,{vector1.x(), vector1.y(),
+                      vector2.x(), vector2.y()});
+
+    crossProduct.set(0,0, xPair.det());
+    crossProduct.set(1,0, -yPair.det());
+    crossProduct.set(2,0, zPair.det());
+
+    for (int i = 0; i < crossProduct.mGet(); ++i) {
+        for (int j = 0; j < crossProduct.nGet(); ++j) {
+            std::cout << crossProduct.get(i, j) << " ";
+        }
+        std::cout << std::endl;
+    }*/
+
     while(WindowProcess()) {
         std::vector<Triangle2D> triangles;
 
         // --- TRANSFORMATION ---
 
-        float y = (float) mousePos.x * 10 / (float) windowWidth; // y rotation
+        float y = (float) mousePos.x * 10.f / (float) windowWidth; // y rotation
         Matrix rotationMatrixY(3, 3, {
             cosf(y),  0.f,  sinf(y),
             0.f,      1.f,      0.f,
             -sinf(y), 0.f,  cosf(y)
         });
 
-        float x = (float) mousePos.y * 10 / (float) windowHeight; // x rotation
+        float x = (float) mousePos.y * 10.f / (float) windowHeight; // x rotation
         Matrix rotationMatrixX(3, 3, {
             1.f,  0.f,          0.f,
             0.f,  cosf(x), -sinf(x),
@@ -209,16 +259,18 @@ void rendererMain() {
                 vector = rotationMatrixY * vector; // rotate y
                 vector = rotationMatrixX * vector; // rotate x
 
-                vector3d.x = vector.get(0,0);
-                vector3d.y = vector.get(1,0);
-                vector3d.z = vector.get(2,0);
+                vector3d.x = vector.x();
+                vector3d.y = vector.y();
+                vector3d.z = vector.z();
 
                 vector3d.z += distanceToCamera; // apply distance to camera
             }
         }
 
         // sort triangles by depth to get propper overlapping
-        std::sort(meshCubeTransformed.triangles.begin(), meshCubeTransformed.triangles.end(), compareApproximatedDepth);
+        std::sort(meshCubeTransformed.triangles.begin(), meshCubeTransformed.triangles.end(), [](const Triangle3D& triangle3d1, const Triangle3D& triangle3d2) -> bool {
+            return triangle3d1[0].z + triangle3d1[1].z + triangle3d2[2].z > triangle3d2[0].z + triangle3d2[1].z + triangle3d2[2].z;
+        });
 
         // --- PROJECTION ---
 
@@ -239,7 +291,7 @@ void rendererMain() {
             for (int i = 0; i != 3; ++i){
                 Matrix vector(triangle3d[i]);
 
-                vector.vectorAppend(1);
+                vector.vectorAppend(1.f);
                 vector = projectionMatrix * vector;
 
                 float w = vector.vectorRemove();
@@ -252,8 +304,8 @@ void rendererMain() {
                 
                 vector = normalizationMatrix * vector;
 
-                triangle2d.points[i].x = (vector.get(0,0) + 1.f) * 0.5f * (float)windowWidth; // scale vector onto window
-                triangle2d.points[i].y = (vector.get(1,0) + 1.f) * 0.5f * (float)windowHeight; // scale vector onto window
+                triangle2d.points[i].x = (vector.x() + 1.f) * 0.5f * (float)windowWidth; // scale vector onto window
+                triangle2d.points[i].y = (vector.y() + 1.f) * 0.5f * (float)windowHeight; // scale vector onto window
             }
             triangles.push_back(triangle2d);
         }
