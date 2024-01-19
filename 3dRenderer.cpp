@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 
 // 3D space structures
 struct Vector3D {
@@ -18,6 +20,7 @@ struct Triangle3D {
 };
 
 struct Mesh3D {
+    Mesh3D() {}
     Mesh3D(std::initializer_list<Triangle3D> initList) : triangles(initList) {}
     std::vector<Triangle3D> triangles;
 };
@@ -169,26 +172,65 @@ private:
     }
 };
 
-Mesh3D meshCube = {
-    // South Face
-    { -1.f, -1.f, -1.f,   -1.f, 1.f, -1.f,   1.f, 1.f, -1.f},
-    { -1.f, -1.f, -1.f,   1.f, 1.f, -1.f,   1.f, -1.f, -1.f},
-    // East face
-    { 1.f, -1.f, -1.f,   1.f, 1.f, -1.f,   1.f, 1.f, 1.f },
-    { 1.f, -1.f, -1.f,   1.f, 1.f, 1.f,   1.f, -1.f, 1.f },
-    // North face
-    { 1.f, -1.f, 1.f,   1.f, 1.f, 1.f,   -1.f, 1.f, 1.f },
-    { 1.f, -1.f, 1.f,   -1.f, 1.f, 1.f,   -1.f, -1.f, 1.f },
-    // West face
-    { -1.f, -1.f, 1.f,   -1.f, 1.f, 1.f,   -1.f, 1.f, -1.f },
-    { -1.f, -1.f, 1.f,   -1.f, 1.f, -1.f,   -1.f, -1.f, -1.f },
-    // Top face
-    { -1.f, 1.f, -1.f,   -1.f, 1.f, 1.f,   1.f, 1.f, 1.f },
-    { -1.f, 1.f, -1.f,   1.f, 1.f, 1.f,   1.f, 1.f, -1.f },
-    // Bottom face
-    { 1.f, -1.f, 1.f,   -1.f, -1.f, 1.f,   -1.f, -1.f, -1.f },
-    { 1.f, -1.f, -1.f,   1.f, -1.f, 1.f,   -1.f, -1.f, -1.f }
-};
+Mesh3D loadObj (const std::string path) {
+    std::ifstream file(path);
+
+    if(!file.is_open()) {  // show fallback cube
+        return {
+            // South Face
+            { -10.f, -10.f, -10.f,   -10.f, 10.f, -10.f,   10.f, 10.f, -10.f},
+            { -10.f, -10.f, -10.f,   10.f, 10.f, -10.f,   10.f, -10.f, -10.f},
+            // East face
+            { 10.f, -10.f, -10.f,   10.f, 10.f, -10.f,   10.f, 10.f, 10.f },
+            { 10.f, -10.f, -10.f,   10.f, 10.f, 10.f,   10.f, -10.f, 10.f },
+            // North face
+            { 10.f, -10.f, 10.f,   10.f, 10.f, 10.f,   -10.f, 10.f, 10.f },
+            { 10.f, -10.f, 10.f,   -10.f, 10.f, 10.f,   -10.f, -10.f, 10.f },
+            // West face
+            { -10.f, -10.f, 10.f,   -10.f, 10.f, 10.f,   -10.f, 10.f, -10.f },
+            { -10.f, -10.f, 10.f,   -10.f, 10.f, -10.f,   -10.f, -10.f, -10.f },
+            // Top face
+            { -10.f, 10.f, -10.f,   -10.f, 10.f, 10.f,   10.f, 10.f, 10.f },
+            { -10.f, 10.f, -10.f,   10.f, 10.f, 10.f,   10.f, 10.f, -10.f },
+            // Bottom face
+            { 10.f, -10.f, 10.f,   -10.f, -10.f, 10.f,   -10.f, -10.f, -10.f },
+            { 10.f, -10.f, -10.f,   10.f, -10.f, 10.f,   -10.f, -10.f, -10.f }
+        };
+    }
+
+    Mesh3D mesh;
+    std::vector<Triangle3D> triangles;
+    std::vector<Vector3D> vertices;
+
+    std::string line;
+    while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        std::string token;
+        iss >> token;
+
+        if(token == "v") {
+            Vector3D vector3d;
+            iss >> vector3d.x >> vector3d.y >> vector3d.z;
+            vertices.push_back(vector3d);
+        }
+
+        if(token == "f") {
+            Triangle3D triangle3d;
+            std::string vertex[3];
+            iss >> vertex[0] >> vertex[1] >> vertex[2];
+            triangle3d[0] = vertices[std::stoi(vertex[0])-1]; // stoi() ignores /vt/vn
+            triangle3d[1] = vertices[std::stoi(vertex[1])-1];
+            triangle3d[2] = vertices[std::stoi(vertex[2])-1];
+            triangles.push_back(triangle3d);
+        }
+    }
+    file.close();
+
+    for (Triangle3D triangle3d : triangles) {
+        mesh.triangles.push_back(triangle3d);
+    }
+    return mesh;
+}
 
 struct Triangle2D {
     POINT points[3];
@@ -201,22 +243,23 @@ UINT windowWidth = 1080;
 UINT windowHeight = 720;
 POINT mousePos = { 0, 0 };
 
-float fieldOfView = 80.f;
-float distanceToCamera = 20.f;
+float fieldOfView = 90.f;
+float distanceToCamera = 500.f;
 
 void rendererMain() {
-    FreeConsole();
+    Mesh3D mesh = loadObj("demo.obj");
 
     while(WindowProcess()) {
         std::vector<Triangle2D> triangles;
+        Mesh3D meshProcessed = mesh;
 
         // --- TRANSFORMATION ---
 
-        float y = (float) mousePos.x * 10.f / (float) windowWidth; // y rotation
-        Matrix rotationMatrixY(3, 3, {
-            cosf(y),  0.f,  sinf(y),
-            0.f,      1.f,      0.f,
-            -sinf(y), 0.f,  cosf(y)
+        float z = (float) mousePos.x * 10.f / (float) windowWidth; // z rotation
+        Matrix rotationMatrixZ(3, 3, {
+            cosf(z), -sinf(z),  0.f,
+            sinf(z),  cosf(z),  0.f,
+            0.f,          0.f,  1.f
         });
 
         float x = (float) mousePos.y * 10.f / (float) windowHeight; // x rotation
@@ -226,14 +269,12 @@ void rendererMain() {
             0.f,  sinf(x),  cosf(x)
         });
 
-        Mesh3D meshCubeTransformed = meshCube;
-
-        for (Triangle3D& triangle3dTransformed : meshCubeTransformed.triangles) {
-            for (Vector3D& vector3d : triangle3dTransformed.vertices) {
+        for (Triangle3D& triangle3d : meshProcessed.triangles) {
+            for (Vector3D& vector3d : triangle3d.vertices) {
                 Matrix vector(vector3d);
 
-                vector = rotationMatrixY * vector; // rotate y
                 vector = rotationMatrixX * vector; // rotate x
+                vector = rotationMatrixZ * vector; // rotate z
 
                 vector3d.x = vector.x();
                 vector3d.y = vector.y();
@@ -246,54 +287,68 @@ void rendererMain() {
         // --- SHADING & VISIBILITY ---
 
         Matrix lightDirVector(3,1, {
-                0.0f,
-                0.0f,
-                -0.6f
-            });
+            0.0f,
+            0.0f,
+            -0.75f
+        });
+        Matrix cameraLocVector(3,1, {
+            0.0f,
+            0.0f,
+            0.0f
+        });
         int ambientLight = 25;
 
         // calculate normals using cross product
         // shade and sort out based on similarity using dot product
-        for (auto triangle3d = meshCubeTransformed.triangles.begin(); triangle3d != meshCubeTransformed.triangles.end();) {
+        for (auto triangle3d = meshProcessed.triangles.begin(); triangle3d != meshProcessed.triangles.end();) {
 
             // Make relative lines from Triangle
             Matrix vectorA = Matrix(triangle3d->vertices[0]) - Matrix(triangle3d->vertices[1]);
             Matrix vectorB = Matrix(triangle3d->vertices[0]) - Matrix(triangle3d->vertices[2]);
 
             // Make component pairs for 3d cross product
-            Matrix xPair(2,2,{vectorA.y(), vectorA.z(),
-                              vectorB.y(), vectorB.z()});
+            Matrix xPair(2,2,{vectorA.y(), vectorB.y(),
+                              vectorA.z(), vectorB.z()});
 
-            Matrix yPair(2,2,{vectorA.x(), vectorA.z(),
-                              vectorB.x(), vectorB.z()});
+            Matrix yPair(2,2,{vectorA.x(), vectorB.x(),
+                              vectorA.z(), vectorB.z()});
 
-            Matrix zPair(2,2,{vectorA.x(), vectorA.y(),
-                              vectorB.x(), vectorB.y()});
+            Matrix zPair(2,2,{vectorA.x(), vectorB.x(),
+                              vectorA.y(), vectorB.y()});
 
             Matrix normal(3,1,{xPair.det(),
                               -yPair.det(),
                                zPair.det()});
 
             // normalize normal hihi
-            float magnitude = normal.magnitude();
-            normal.x(normal.x() / magnitude);
-            normal.y(normal.y() / magnitude);
-            normal.z(normal.z() / magnitude);
+            float normalMagnitude = normal.magnitude();
+            normal.x(normal.x() / normalMagnitude);
+            normal.y(normal.y() / normalMagnitude);
+            normal.z(normal.z() / normalMagnitude);
 
             // apply shading using dot product
-            Matrix similarity = lightDirVector.T() * normal;
-            triangle3d->shading = similarity.get(0,0) * (255 - ambientLight) + ambientLight;
+            Matrix similarityShade = lightDirVector.T() * normal;
+            triangle3d->shading = similarityShade.get(0,0) * (255 - ambientLight) + ambientLight;
 
-            // remove hidden triangles
-            if (similarity.get(0,0) <= 0.f){
-                meshCubeTransformed.triangles.erase(triangle3d);
+            // remove hidden triangles using dot product
+            Matrix cameraToTriangleVector(cameraLocVector + Matrix(triangle3d->vertices[0]));
+
+            // normalize to unit vector
+            float cttMagnitude = cameraToTriangleVector.magnitude();
+            cameraToTriangleVector.x(cameraToTriangleVector.x() / cttMagnitude);
+            cameraToTriangleVector.y(cameraToTriangleVector.y() / cttMagnitude);
+            cameraToTriangleVector.z(cameraToTriangleVector.z() / cttMagnitude);
+
+            Matrix similarityView = cameraToTriangleVector.T() * normal;
+            if (similarityView.get(0,0) >= 0.f || triangle3d->vertices[0].z < 0.f){
+                meshProcessed.triangles.erase(triangle3d);
             } else {
                 triangle3d++;
             }
         }
 
         // sort triangles by approximated depth for propper overlapping
-        std::sort(meshCubeTransformed.triangles.begin(), meshCubeTransformed.triangles.end(), [](const Triangle3D& triangle3d1, const Triangle3D& triangle3d2) -> bool {
+        std::sort(meshProcessed.triangles.begin(), meshProcessed.triangles.end(), [](const Triangle3D& triangle3d1, const Triangle3D& triangle3d2) -> bool {
             return triangle3d1[0].z + triangle3d1[1].z + triangle3d2[2].z > triangle3d2[0].z + triangle3d2[1].z + triangle3d2[2].z;
         });
 
@@ -310,7 +365,7 @@ void rendererMain() {
             0.f,  0.f,  (-f*n)/(f-n), 0.f
         });
 
-        for (const Triangle3D& triangle3d : meshCubeTransformed.triangles) {
+        for (const Triangle3D& triangle3d : meshProcessed.triangles) {
             Triangle2D triangle2d;
             triangle2d.shading = triangle3d.shading;
 
@@ -346,6 +401,7 @@ void rendererMain() {
 // General window variables
 std::string windowTitle = "Laurin's 3D Renderer";
 COLORREF backgroundColor = RGB(0, 0, 0);
+bool debugMode = false;
 // UINT windowWidth = 1080; (defined above)
 // UINT windowHeight = 720; (defined above)
 
@@ -365,26 +421,30 @@ void WindowDraw(std::vector<Triangle2D> &triangles) {
     DeleteObject(hBackgroundBrush);
 
     for (const auto& triangle : triangles) {
-        // Create a region from the triangle's vertices
-        HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
+        if(!debugMode) {
+            // Create a region from the triangle's vertices
+            HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
 
-        // Fill the created region
-        HBRUSH hBrush = CreateSolidBrush(RGB(triangle.shading, triangle.shading, triangle.shading));
-        FillRgn(hdcBuffer, hRgn, hBrush);
+            // Fill the created region
+            HBRUSH hBrush = CreateSolidBrush(RGB(triangle.shading, triangle.shading, triangle.shading));
+            FillRgn(hdcBuffer, hRgn, hBrush);
 
-        // Draw triangle outline for debugging
-        //HPEN hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
-        //SelectObject(hdcBuffer, hPen);
-        //MoveToEx(hdcBuffer, triangle.points[0].x, triangle.points[0].y, NULL);
-        //LineTo(hdcBuffer, triangle.points[1].x, triangle.points[1].y);
-        //MoveToEx(hdcBuffer, triangle.points[1].x, triangle.points[1].y, NULL);
-        //LineTo(hdcBuffer, triangle.points[2].x, triangle.points[2].y);
-        //MoveToEx(hdcBuffer, triangle.points[2].x, triangle.points[2].y, NULL);
-        //LineTo(hdcBuffer, triangle.points[0].x, triangle.points[0].y);
+            DeleteObject(hRgn);
+            DeleteObject(hBrush);
+        } else {
+            // Draw triangle outline for debugging
+            HPEN hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
+            SelectObject(hdcBuffer, hPen);
 
-        DeleteObject(hRgn);
-        DeleteObject(hBrush);
-        //DeleteObject(hPen);
+            MoveToEx(hdcBuffer, triangle.points[0].x, triangle.points[0].y, NULL);
+            LineTo(hdcBuffer, triangle.points[1].x, triangle.points[1].y);
+            MoveToEx(hdcBuffer, triangle.points[1].x, triangle.points[1].y, NULL);
+            LineTo(hdcBuffer, triangle.points[2].x, triangle.points[2].y);
+            MoveToEx(hdcBuffer, triangle.points[2].x, triangle.points[2].y, NULL);
+            LineTo(hdcBuffer, triangle.points[0].x, triangle.points[0].y);
+
+            DeleteObject(hPen);
+        }
     }
     // Copy the buffer to screen
     BitBlt(hdc, 0, 0, windowWidth, windowHeight, hdcBuffer, 0, 0, SRCCOPY);
@@ -407,9 +467,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     switch (uMsg) {
         case WM_KEYDOWN: {
             if (wParam == VK_UP)
-                distanceToCamera -= 0.5f;
+                distanceToCamera -= 5.f;
             if (wParam == VK_DOWN)
-                distanceToCamera += 0.5f;
+                distanceToCamera += 5.f;
+            if (wParam == 'D')
+                debugMode = !debugMode;
+            return 0;
         }
         case WM_MOUSEMOVE: {
             mousePos.x = LOWORD(lParam);
@@ -462,6 +525,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     );
     ShowWindow(hwnd, nCmdShow);
     hdc = GetDC(hwnd);
+    FreeConsole();
 
     // Initialize buffer
     hdcBuffer = CreateCompatibleDC(NULL);
@@ -471,7 +535,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // Set FPS Timer
     SetTimer(hwnd, 1, 1000, NULL);
 
-    // *** Start main process ***
+    // Start main process
     rendererMain();
 
     DeleteObject(hBitmap);
