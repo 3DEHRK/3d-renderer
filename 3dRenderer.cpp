@@ -6,8 +6,12 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <thread>
+#include <mutex>
 
-// 3D space structures
+
+// --- SPACE STRUCTURES ---
+
 struct Vector3D {
     float x, y, z;
 };
@@ -15,17 +19,30 @@ struct Vector3D {
 struct Triangle3D {
     Vector3D& operator[](int i) { return vertices[i]; }
     Vector3D operator[](int i) const { return vertices[i]; }
+
     Vector3D vertices[3];
-    int shading = 128;
 };
 
 struct Mesh3D {
     Mesh3D() {}
     Mesh3D(std::initializer_list<Triangle3D> initList) : triangles(initList) {}
+
     std::vector<Triangle3D> triangles;
 };
 
-// User defined matrix type
+struct Triangle2D {
+    Triangle2D() {}
+    Triangle2D(bool isRendered) : isRendered(isRendered) {}
+
+    POINT points[3];
+    int shade;
+    int z;
+    bool isRendered = true;
+};
+
+
+// --- MATRIX TYPE ---
+
 class Matrix {  // optimization: make template
 public:
     Matrix(int m_, int n_, const std::initializer_list<float> initList = {}) : m(m_), n(n_) {  // Create matrix
@@ -172,10 +189,13 @@ private:
     }
 };
 
+
+// --- OBJ FILE LOADING ---
+
 Mesh3D loadObj (const std::string path) {
     std::ifstream file(path);
 
-    if(!file.is_open()) {  // show fallback cube
+    if(!file.is_open()) {  // show fallback cube if no file
         return {
             // South Face
             { -10.f, -10.f, -10.f,   -10.f, 10.f, -10.f,   10.f, 10.f, -10.f},
@@ -198,23 +218,23 @@ Mesh3D loadObj (const std::string path) {
         };
     }
 
-    Mesh3D mesh;
+    // accumulate from reading file
     std::vector<Triangle3D> triangles;
     std::vector<Vector3D> vertices;
 
     std::string line;
     while (std::getline(file, line)) {
         std::istringstream iss(line);
-        std::string token;
-        iss >> token;
+        std::string prefixToken;
+        iss >> prefixToken;
 
-        if(token == "v") {
+        if(prefixToken == "v") {
             Vector3D vector3d;
             iss >> vector3d.x >> vector3d.y >> vector3d.z;
             vertices.push_back(vector3d);
         }
 
-        if(token == "f") {
+        if(prefixToken == "f") {
             Triangle3D triangle3d;
             std::string vertex[3];
             iss >> vertex[0] >> vertex[1] >> vertex[2];
@@ -226,19 +246,16 @@ Mesh3D loadObj (const std::string path) {
     }
     file.close();
 
+    Mesh3D mesh;
     for (Triangle3D triangle3d : triangles) {
         mesh.triangles.push_back(triangle3d);
     }
     return mesh;
 }
 
-struct Triangle2D {
-    POINT points[3];
-    int shading = 128;
-};
 
-bool WindowProcess();
-void WindowDraw(std::vector<Triangle2D> &triangles);
+// --- RENDERING ---
+
 UINT windowWidth = 1080;
 UINT windowHeight = 720;
 POINT mousePos = { 0, 0 };
@@ -246,153 +263,189 @@ POINT mousePos = { 0, 0 };
 float fieldOfView = 90.f;
 float distanceToCamera = 500.f;
 
+Triangle2D renderTrianglePipeline(Triangle3D triangle3d) {
+    Triangle2D triangle2d;
+
+    // --- TRANSFORMATION ---
+
+    float z = (float) mousePos.x * 10.f / (float) windowWidth; // z rotation
+    Matrix rotationMatrixZ(3, 3, {
+        cosf(z), -sinf(z),  0.f,
+        sinf(z),  cosf(z),  0.f,
+        0.f,          0.f,  1.f
+    });
+
+    float x = (float) mousePos.y * 10.f / (float) windowHeight; // x rotation
+    Matrix rotationMatrixX(3, 3, {
+        1.f,  0.f,          0.f,
+        0.f,  cosf(x), -sinf(x),
+        0.f,  sinf(x),  cosf(x)
+    });
+
+    for (Vector3D& vector3d : triangle3d.vertices) {
+        Matrix vector(vector3d);
+
+        vector = rotationMatrixX * vector; // rotate x
+        vector = rotationMatrixZ * vector; // rotate z
+
+        vector3d.x = vector.x();
+        vector3d.y = vector.y();
+        vector3d.z = vector.z();
+
+        vector3d.z += distanceToCamera; // apply distance to camera
+    }
+
+    // approximate depth
+    triangle2d.z = (triangle3d[0].z + triangle3d[1].z + triangle3d[2].z) / 3;
+
+    // --- SHADING & VISIBILITY ---
+
+    Matrix lightDirVector(3,1, {
+        0.0f,
+        0.0f,
+        -0.75f
+    });
+    Matrix cameraLocVector(3,1, {
+        0.0f,
+        0.0f,
+        0.0f
+    });
+    int ambientLight = 25;
+
+    // calculate normals using cross product
+    // shade and sort out based on similarity using dot product
+
+    // Make relative lines from Triangle
+    Matrix vectorA = Matrix(triangle3d[0]) - Matrix(triangle3d[1]);
+    Matrix vectorB = Matrix(triangle3d[0]) - Matrix(triangle3d[2]);
+
+    // Make component pairs for 3d cross product
+    Matrix xPair(2,2,{vectorA.y(), vectorB.y(),
+                        vectorA.z(), vectorB.z()});
+
+    Matrix yPair(2,2,{vectorA.x(), vectorB.x(),
+                        vectorA.z(), vectorB.z()});
+
+    Matrix zPair(2,2,{vectorA.x(), vectorB.x(),
+                        vectorA.y(), vectorB.y()});
+
+    Matrix normal(3,1,{xPair.det(),
+                        -yPair.det(),
+                        zPair.det()});
+
+    // normalize normal hihi
+    float normalMagnitude = normal.magnitude();
+    normal.x(normal.x() / normalMagnitude);
+    normal.y(normal.y() / normalMagnitude);
+    normal.z(normal.z() / normalMagnitude);
+
+    // apply shading using dot product
+    Matrix similarityShade = lightDirVector.T() * normal;
+    triangle2d.shade = similarityShade.get(0,0) * (255 - ambientLight) + ambientLight;
+
+    // remove hidden triangles using dot product
+    Matrix cameraToTriangleVector(cameraLocVector + Matrix(triangle3d[0]));
+
+    // normalize to unit vector
+    float cttvMagnitude = cameraToTriangleVector.magnitude();
+    cameraToTriangleVector.x(cameraToTriangleVector.x() / cttvMagnitude);
+    cameraToTriangleVector.y(cameraToTriangleVector.y() / cttvMagnitude);
+    cameraToTriangleVector.z(cameraToTriangleVector.z() / cttvMagnitude);
+
+    Matrix similarityView = cameraToTriangleVector.T() * normal;
+    if (similarityView.get(0,0) >= 0.f || triangle3d[0].z < 0.f)
+        return Triangle2D(false);
+
+    // --- PROJECTION ---
+
+    float n = 0.1f; // near plane distance
+    float f = 1000.f; // far plane distance
+    float a = (float)windowHeight / (float)windowWidth; // viewing aspect ratio
+    float v = 1.f / tanf(fieldOfView * 0.5f / 180.f * 3.14159f); // field of view scalar
+    Matrix projectionMatrix(4, 4, {
+        a*v,  0.f,  0.f,          0.f,
+        0.f,  v,    0.f,          0.f,
+        0.f,  0.f,  f/(f-n),      1.f,
+        0.f,  0.f,  (-f*n)/(f-n), 0.f
+    });
+
+    // project each vector and normalize them by z(w), creating perspective
+    for (int i = 0; i != 3; ++i){
+        Matrix vector(triangle3d[i]);
+
+        vector.vectorAppend(1.f);
+        vector = projectionMatrix * vector;
+
+        float w = vector.vectorRemove();
+        if (w == 0) w = n;
+        Matrix normalizationMatrix(3, 3, {
+            1.f/w, 0.f,   0.f,
+            0.f,   1.f/w, 0.f,
+            0.f,   0.f,   1.f/w
+        });
+        
+        vector = normalizationMatrix * vector;
+
+        triangle2d.points[i].x = (vector.x() + 1.f) * 0.5f * (float)windowWidth; // scale vector onto window
+        triangle2d.points[i].y = (vector.y() + 1.f) * 0.5f * (float)windowHeight; // scale vector onto window
+    }
+
+    return triangle2d;
+}
+
+
+// --- MAIN FUNCTION ---
+
+std::mutex renderingMutex;
+
+void renderThread(const Mesh3D& mesh, std::vector<Triangle2D>& triangles2d, int start, int end) {
+    for (int i = start; i < end; ++i) {
+        const Triangle3D& triangle3d = mesh.triangles[i];
+
+        const Triangle2D& triangle2d = renderTrianglePipeline(triangle3d);
+        if (!triangle2d.isRendered)
+            continue;
+
+        std::lock_guard<std::mutex> lock(renderingMutex);
+        triangles2d.push_back(triangle2d);
+    }
+}
+
+bool WindowProcess();
+void WindowDraw(const std::vector<Triangle2D> &triangles);
+
 void rendererMain() {
     Mesh3D mesh = loadObj("demo.obj");
 
-    while(WindowProcess()) {
-        std::vector<Triangle2D> triangles;
-        Mesh3D meshProcessed = mesh;
+    std::thread drawingThread = std::thread([]{});
+    const int numThreads = std::thread::hardware_concurrency() - 1;
 
-        // --- TRANSFORMATION ---
+    while (WindowProcess()) {
+        std::vector<Triangle2D> triangles2d;
+        std::vector<std::thread> renderingThreads;
+        const int trianglesPerThread = mesh.triangles.size() / numThreads;
 
-        float z = (float) mousePos.x * 10.f / (float) windowWidth; // z rotation
-        Matrix rotationMatrixZ(3, 3, {
-            cosf(z), -sinf(z),  0.f,
-            sinf(z),  cosf(z),  0.f,
-            0.f,          0.f,  1.f
-        });
-
-        float x = (float) mousePos.y * 10.f / (float) windowHeight; // x rotation
-        Matrix rotationMatrixX(3, 3, {
-            1.f,  0.f,          0.f,
-            0.f,  cosf(x), -sinf(x),
-            0.f,  sinf(x),  cosf(x)
-        });
-
-        for (Triangle3D& triangle3d : meshProcessed.triangles) {
-            for (Vector3D& vector3d : triangle3d.vertices) {
-                Matrix vector(vector3d);
-
-                vector = rotationMatrixX * vector; // rotate x
-                vector = rotationMatrixZ * vector; // rotate z
-
-                vector3d.x = vector.x();
-                vector3d.y = vector.y();
-                vector3d.z = vector.z();
-
-                vector3d.z += distanceToCamera; // apply distance to camera
-            }
+        // Rrendering threads
+        for (int i = 0; i < numThreads; ++i) {
+            int start = i * trianglesPerThread;
+            int end = (i == numThreads - 1) ? mesh.triangles.size() : (i + 1) * trianglesPerThread;
+            renderingThreads.emplace_back(renderThread, std::ref(mesh), std::ref(triangles2d), start, end);
+        }
+        for (std::thread &renderingThread : renderingThreads) {
+            renderingThread.join();
         }
 
-        // --- SHADING & VISIBILITY ---
-
-        Matrix lightDirVector(3,1, {
-            0.0f,
-            0.0f,
-            -0.75f
-        });
-        Matrix cameraLocVector(3,1, {
-            0.0f,
-            0.0f,
-            0.0f
-        });
-        int ambientLight = 25;
-
-        // calculate normals using cross product
-        // shade and sort out based on similarity using dot product
-        for (auto triangle3d = meshProcessed.triangles.begin(); triangle3d != meshProcessed.triangles.end();) {
-
-            // Make relative lines from Triangle
-            Matrix vectorA = Matrix(triangle3d->vertices[0]) - Matrix(triangle3d->vertices[1]);
-            Matrix vectorB = Matrix(triangle3d->vertices[0]) - Matrix(triangle3d->vertices[2]);
-
-            // Make component pairs for 3d cross product
-            Matrix xPair(2,2,{vectorA.y(), vectorB.y(),
-                              vectorA.z(), vectorB.z()});
-
-            Matrix yPair(2,2,{vectorA.x(), vectorB.x(),
-                              vectorA.z(), vectorB.z()});
-
-            Matrix zPair(2,2,{vectorA.x(), vectorB.x(),
-                              vectorA.y(), vectorB.y()});
-
-            Matrix normal(3,1,{xPair.det(),
-                              -yPair.det(),
-                               zPair.det()});
-
-            // normalize normal hihi
-            float normalMagnitude = normal.magnitude();
-            normal.x(normal.x() / normalMagnitude);
-            normal.y(normal.y() / normalMagnitude);
-            normal.z(normal.z() / normalMagnitude);
-
-            // apply shading using dot product
-            Matrix similarityShade = lightDirVector.T() * normal;
-            triangle3d->shading = similarityShade.get(0,0) * (255 - ambientLight) + ambientLight;
-
-            // remove hidden triangles using dot product
-            Matrix cameraToTriangleVector(cameraLocVector + Matrix(triangle3d->vertices[0]));
-
-            // normalize to unit vector
-            float cttMagnitude = cameraToTriangleVector.magnitude();
-            cameraToTriangleVector.x(cameraToTriangleVector.x() / cttMagnitude);
-            cameraToTriangleVector.y(cameraToTriangleVector.y() / cttMagnitude);
-            cameraToTriangleVector.z(cameraToTriangleVector.z() / cttMagnitude);
-
-            Matrix similarityView = cameraToTriangleVector.T() * normal;
-            if (similarityView.get(0,0) >= 0.f || triangle3d->vertices[0].z < 0.f){
-                meshProcessed.triangles.erase(triangle3d);
-            } else {
-                triangle3d++;
-            }
-        }
-
-        // sort triangles by approximated depth for propper overlapping
-        std::sort(meshProcessed.triangles.begin(), meshProcessed.triangles.end(), [](const Triangle3D& triangle3d1, const Triangle3D& triangle3d2) -> bool {
-            return triangle3d1[0].z + triangle3d1[1].z + triangle3d2[2].z > triangle3d2[0].z + triangle3d2[1].z + triangle3d2[2].z;
+        // introsort triangles by approximated depth for proper overlapping (painter's algorithm)
+        std::sort(triangles2d.begin(), triangles2d.end(), [](const Triangle2D& triangle1, const Triangle2D& triangle2) -> bool {
+            return triangle1.z > triangle2.z;
         });
 
-        // --- PROJECTION ---
-
-        float n = 0.1f; // near plane distance
-        float f = 1000.f; // far plane distance
-        float a = (float)windowHeight / (float)windowWidth; // viewing aspect ratio
-        float v = 1.f / tanf(fieldOfView * 0.5f / 180.f * 3.14159f); // field of view scalar
-        Matrix projectionMatrix(4, 4, {
-            a*v,  0.f,  0.f,          0.f,
-            0.f,  v,    0.f,          0.f,
-            0.f,  0.f,  f/(f-n),      1.f,
-            0.f,  0.f,  (-f*n)/(f-n), 0.f
-        });
-
-        for (const Triangle3D& triangle3d : meshProcessed.triangles) {
-            Triangle2D triangle2d;
-            triangle2d.shading = triangle3d.shading;
-
-            // project each vector and normalize them by z(w), creating perspective
-            for (int i = 0; i != 3; ++i){
-                Matrix vector(triangle3d[i]);
-
-                vector.vectorAppend(1.f);
-                vector = projectionMatrix * vector;
-
-                float w = vector.vectorRemove();
-                if (w == 0) w = n;
-                Matrix normalizationMatrix(3, 3, {
-                    1.f/w, 0.f,   0.f,
-                    0.f,   1.f/w, 0.f,
-                    0.f,   0.f,   1.f/w
-                });
-                
-                vector = normalizationMatrix * vector;
-
-                triangle2d.points[i].x = (vector.x() + 1.f) * 0.5f * (float)windowWidth; // scale vector onto window
-                triangle2d.points[i].y = (vector.y() + 1.f) * 0.5f * (float)windowHeight; // scale vector onto window
-            }
-            triangles.push_back(triangle2d);
-        }
-        WindowDraw(triangles);
+        // Drawing thread
+        drawingThread.join();
+        drawingThread = std::thread(WindowDraw, triangles2d);
     }
+
+    drawingThread.join();
 }
 
 
@@ -407,12 +460,13 @@ bool debugMode = false;
 
 // POINT mousePos = { 0, 0 }; (defined above)
 int frames = 0;
+int totalTriangles = 0;
 HWND hwnd = NULL;
 HDC hdc = NULL;
 HDC hdcBuffer = NULL;
 HBITMAP hBitmap = NULL;
 
-void WindowDraw(std::vector<Triangle2D> &triangles) {
+void WindowDraw(const std::vector<Triangle2D> &triangles) {
     // Clear the screen with a background color
     RECT clientRect;
     GetClientRect(hwnd, &clientRect);
@@ -420,13 +474,13 @@ void WindowDraw(std::vector<Triangle2D> &triangles) {
     FillRect(hdcBuffer, &clientRect, hBackgroundBrush);
     DeleteObject(hBackgroundBrush);
 
-    for (const auto& triangle : triangles) {
+    for (const Triangle2D& triangle : triangles) {
         if(!debugMode) {
             // Create a region from the triangle's vertices
             HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
 
             // Fill the created region
-            HBRUSH hBrush = CreateSolidBrush(RGB(triangle.shading, triangle.shading, triangle.shading));
+            HBRUSH hBrush = CreateSolidBrush(RGB(triangle.shade, triangle.shade, triangle.shade));
             FillRgn(hdcBuffer, hRgn, hBrush);
 
             DeleteObject(hRgn);
@@ -449,6 +503,7 @@ void WindowDraw(std::vector<Triangle2D> &triangles) {
     // Copy the buffer to screen
     BitBlt(hdc, 0, 0, windowWidth, windowHeight, hdcBuffer, 0, 0, SRCCOPY);
     frames++;
+    totalTriangles = triangles.size();
 }
 
 bool WindowProcess() {
@@ -480,7 +535,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             return 0;
         }
         case WM_TIMER: {
-            const std::string title = windowTitle + " | FPS " + std::to_string(frames);
+            const std::string title = windowTitle + " | TRIS " + std::to_string(totalTriangles) + " | FPS " + std::to_string(frames);
             SetWindowText(hwnd, title.c_str());
             frames = 0;
             return 0;
