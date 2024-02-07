@@ -36,7 +36,7 @@ struct Triangle2D {
 
     POINT points[3];
     int shade;
-    int z;
+    float z;
     bool isRendered = true;
 };
 
@@ -581,6 +581,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShowWindow(hwnd, nCmdShow);
     hdc = GetDC(hwnd);
     FreeConsole();
+
+    // Initial placeholder screen
+    RECT clientRect;
+    GetClientRect(hwnd, &clientRect);
+    HBRUSH hBackgroundBrush = CreateSolidBrush(RGB(20,20,20));
+    FillRect(hdc, &clientRect, hBackgroundBrush);
+    DeleteObject(hBackgroundBrush);
 
     // Initialize buffer
     hdcBuffer = CreateCompatibleDC(NULL);
