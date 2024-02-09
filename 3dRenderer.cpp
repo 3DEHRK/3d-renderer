@@ -36,6 +36,7 @@ struct Triangle2D {
 
     POINT points[3];
     int shade;
+    int r, g, b;
     float z;
     bool isRendered = true;
 };
@@ -261,10 +262,13 @@ UINT windowHeight = 720;
 POINT mousePos = { 0, 0 };
 
 float fieldOfView = 90.f;
-float distanceToCamera = 500.f;
+float distanceToCamera = 20.f;
 
 Triangle2D renderTrianglePipeline(Triangle3D triangle3d) {
     Triangle2D triangle2d;
+    triangle2d.r = triangle3d[0].x*17;
+    triangle2d.g = triangle3d[0].y*17;
+    triangle2d.b = triangle3d[0].z*17;
 
     // --- TRANSFORMATION ---
 
@@ -413,9 +417,11 @@ void renderThread(const Mesh3D& mesh, std::vector<Triangle2D>& triangles2d, int 
 
 bool WindowProcess();
 void WindowDraw(const std::vector<Triangle2D> &triangles);
+int totalTriangles = 0;
 
 void rendererMain() {
     Mesh3D mesh = loadObj("demo.obj");
+    totalTriangles = mesh.triangles.size();
 
     std::thread drawingThread = std::thread([]{});
     const int numThreads = std::thread::hardware_concurrency() - 1;
@@ -454,13 +460,13 @@ void rendererMain() {
 // General window variables
 std::string windowTitle = "Laurin's 3D Renderer";
 COLORREF backgroundColor = RGB(0, 0, 0);
-bool debugMode = false;
+int renderingMode = 0;
 // UINT windowWidth = 1080; (defined above)
 // UINT windowHeight = 720; (defined above)
 
 // POINT mousePos = { 0, 0 }; (defined above)
 int frames = 0;
-int totalTriangles = 0;
+int visibleTriangles = 0;
 HWND hwnd = NULL;
 HDC hdc = NULL;
 HDC hdcBuffer = NULL;
@@ -474,36 +480,77 @@ void WindowDraw(const std::vector<Triangle2D> &triangles) {
     FillRect(hdcBuffer, &clientRect, hBackgroundBrush);
     DeleteObject(hBackgroundBrush);
 
+    // Texture experiments
+    HBITMAP bitmap = (HBITMAP)LoadImage(NULL, "texture.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    HDC hdcMem = CreateCompatibleDC(hdc);
+    SelectObject(hdcMem, bitmap);
+    BITMAP bm;
+    GetObject(bitmap, sizeof(bm), &bm);
+
     for (const Triangle2D& triangle : triangles) {
-        if(!debugMode) {
-            // Create a region from the triangle's vertices
-            HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
+        switch (renderingMode) {
+            case 0: {
+                // Create a region from the triangle's vertices
+                HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
 
-            // Fill the created region
-            HBRUSH hBrush = CreateSolidBrush(RGB(triangle.shade, triangle.shade, triangle.shade));
-            FillRgn(hdcBuffer, hRgn, hBrush);
+                // Fill the created region
+                HBRUSH hBrush = CreateSolidBrush(RGB(triangle.shade, triangle.shade, triangle.shade));
+                FillRgn(hdcBuffer, hRgn, hBrush);
 
-            DeleteObject(hRgn);
-            DeleteObject(hBrush);
-        } else {
-            // Draw triangle outline for debugging
-            HPEN hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
-            SelectObject(hdcBuffer, hPen);
+                DeleteObject(hRgn);
+                DeleteObject(hBrush);
+                break;
+            }
+            case 1: {
+                // Create a region from the triangle's vertices
+                HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
 
-            MoveToEx(hdcBuffer, triangle.points[0].x, triangle.points[0].y, NULL);
-            LineTo(hdcBuffer, triangle.points[1].x, triangle.points[1].y);
-            MoveToEx(hdcBuffer, triangle.points[1].x, triangle.points[1].y, NULL);
-            LineTo(hdcBuffer, triangle.points[2].x, triangle.points[2].y);
-            MoveToEx(hdcBuffer, triangle.points[2].x, triangle.points[2].y, NULL);
-            LineTo(hdcBuffer, triangle.points[0].x, triangle.points[0].y);
+                // Fill the created region
+                HBRUSH hBrush = CreateSolidBrush(RGB(triangle.shade/20*triangle.r, triangle.shade/20*triangle.g, triangle.shade/20*triangle.b));
+                FillRgn(hdcBuffer, hRgn, hBrush);
 
-            DeleteObject(hPen);
+                DeleteObject(hRgn);
+                DeleteObject(hBrush);
+                break;
+            }
+            case 2:{
+                // Draw triangle outline for debugging
+                HPEN hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
+                SelectObject(hdcBuffer, hPen);
+
+                MoveToEx(hdcBuffer, triangle.points[0].x, triangle.points[0].y, NULL);
+                LineTo(hdcBuffer, triangle.points[1].x, triangle.points[1].y);
+                MoveToEx(hdcBuffer, triangle.points[1].x, triangle.points[1].y, NULL);
+                LineTo(hdcBuffer, triangle.points[2].x, triangle.points[2].y);
+                MoveToEx(hdcBuffer, triangle.points[2].x, triangle.points[2].y, NULL);
+                LineTo(hdcBuffer, triangle.points[0].x, triangle.points[0].y);
+
+                DeleteObject(hPen);
+                break;
+            }
+            case 3: {
+                // Texture experiments
+                HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);       
+
+                SelectClipRgn(hdcBuffer, hRgn);
+                StretchBlt(hdcBuffer, 0, 0, windowWidth, windowHeight, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
+                DeleteObject(hRgn);
+                SelectClipRgn(hdcBuffer, NULL);
+                break;
+            }
+            default: {
+                renderingMode = 0;
+                break;
+            }
         }
     }
     // Copy the buffer to screen
     BitBlt(hdc, 0, 0, windowWidth, windowHeight, hdcBuffer, 0, 0, SRCCOPY);
     frames++;
-    totalTriangles = triangles.size();
+    visibleTriangles = triangles.size();
+
+    DeleteObject(hdcMem);
+    DeleteObject(bitmap);
 }
 
 bool WindowProcess() {
@@ -525,8 +572,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 distanceToCamera -= 5.f;
             if (wParam == VK_DOWN)
                 distanceToCamera += 5.f;
-            if (wParam == 'D')
-                debugMode = !debugMode;
+            if (wParam == VK_TAB)
+                renderingMode++;
             return 0;
         }
         case WM_MOUSEMOVE: {
@@ -535,7 +582,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             return 0;
         }
         case WM_TIMER: {
-            const std::string title = windowTitle + " | TRIS " + std::to_string(totalTriangles) + " | FPS " + std::to_string(frames);
+            const std::string title = windowTitle + " | TRIS " + std::to_string(visibleTriangles) + "/" + std::to_string(totalTriangles) + " | FPS " + std::to_string(frames);
             SetWindowText(hwnd, title.c_str());
             frames = 0;
             return 0;
