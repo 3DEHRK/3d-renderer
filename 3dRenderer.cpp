@@ -8,6 +8,7 @@
 #include <sstream>
 #include <thread>
 #include <mutex>
+#include <iostream>
 
 
 // --- SPACE STRUCTURES ---
@@ -488,63 +489,58 @@ void WindowDraw(const std::vector<Triangle2D> &triangles) {
     GetObject(bitmap, sizeof(bm), &bm);
 
     for (const Triangle2D& triangle : triangles) {
-        switch (renderingMode) {
-            case 0: {
-                // Create a region from the triangle's vertices
-                HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
+        POINT point1 = {200,100};
+        POINT point2 = {10,250};
+        POINT point3 = {600,300};
+        Triangle2D tri;
+        tri.points[0] = point1;
+        tri.points[1] = point2;
+        tri.points[2] = point3;
+        tri = triangle;
 
-                // Fill the created region
-                HBRUSH hBrush = CreateSolidBrush(RGB(triangle.shade, triangle.shade, triangle.shade));
-                FillRgn(hdcBuffer, hRgn, hBrush);
+        // rasterization (that isnt so good yet)
 
-                DeleteObject(hRgn);
-                DeleteObject(hBrush);
-                break;
+        std::sort(tri.points, tri.points + 3, [](POINT& a, POINT& b) -> bool {
+            return a.y < b.y;
+        });
+
+        POINT xstart = tri.points[1];
+        POINT xend = tri.points[2];
+        if (xstart.x > xend.x)
+            std::swap(xstart, xend);
+
+        float slopeL = 0;
+        float slopeR = 0;
+        if (xstart.y - tri.points[0].y != 0)
+            slopeL = (tri.points[0].x - xstart.x) / (xstart.y - tri.points[0].y);
+        if (xend.y - tri.points[0].y != 0)
+            slopeR = (xend.x - tri.points[0].x) / (xend.y - tri.points[0].y);
+
+        //std::cout << slopeL << " " << slopeR << ". ";
+        
+        int lastEnd;
+        int lastStart;
+        // cleanness: store progress in vars instead
+
+        for (int y = tri.points[0].y; y < tri.points[1].y; y++) {
+            for (int x = tri.points[0].x - slopeL * (y - tri.points[0].y); x < tri.points[0].x + slopeR * (y - tri.points[0].y); x++) {
+                SetPixel(hdcBuffer, x, y, RGB(tri.shade, tri.shade, tri.shade));
             }
-            case 1: {
-                // Create a region from the triangle's vertices
-                HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);
+            lastStart = tri.points[0].x - slopeL * (y - tri.points[0].y);
+            lastEnd = tri.points[0].x + slopeR * (y - tri.points[0].y);
+        }
 
-                // Fill the created region
-                HBRUSH hBrush = CreateSolidBrush(RGB(triangle.shade/20*triangle.r, triangle.shade/20*triangle.g, triangle.shade/20*triangle.b));
-                FillRgn(hdcBuffer, hRgn, hBrush);
+        // slope r or l that changes?
 
-                DeleteObject(hRgn);
-                DeleteObject(hBrush);
-                break;
-            }
-            case 2:{
-                // Draw triangle outline for debugging
-                HPEN hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
-                SelectObject(hdcBuffer, hPen);
+        if (xend.y - tri.points[1].y)
+            slopeL = (xend.x - tri.points[1].x) / (xend.y - tri.points[1].y);
 
-                MoveToEx(hdcBuffer, triangle.points[0].x, triangle.points[0].y, NULL);
-                LineTo(hdcBuffer, triangle.points[1].x, triangle.points[1].y);
-                MoveToEx(hdcBuffer, triangle.points[1].x, triangle.points[1].y, NULL);
-                LineTo(hdcBuffer, triangle.points[2].x, triangle.points[2].y);
-                MoveToEx(hdcBuffer, triangle.points[2].x, triangle.points[2].y, NULL);
-                LineTo(hdcBuffer, triangle.points[0].x, triangle.points[0].y);
-
-                DeleteObject(hPen);
-                break;
-            }
-            case 3: {
-                // Texture experiments
-                HRGN hRgn = CreatePolygonRgn(triangle.points, 3, WINDING);       
-
-                SelectClipRgn(hdcBuffer, hRgn);
-                StretchBlt(hdcBuffer, 0, 0, windowWidth, windowHeight, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
-                DeleteObject(hRgn);
-                SelectClipRgn(hdcBuffer, NULL);
-                break;
-            }
-            default: {
-                renderingMode = 0;
-                break;
+        for (int y = tri.points[1].y; y < tri.points[2].y; y++) {
+            for (int x = lastStart + slopeL * (y - tri.points[1].y); x < lastEnd + slopeR * (y - tri.points[1].y); x++) {
+                SetPixel(hdcBuffer, x, y, RGB(tri.shade, tri.shade, tri.shade));
             }
         }
     }
-    // Copy the buffer to screen
     BitBlt(hdc, 0, 0, windowWidth, windowHeight, hdcBuffer, 0, 0, SRCCOPY);
     frames++;
     visibleTriangles = triangles.size();
@@ -627,7 +623,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     );
     ShowWindow(hwnd, nCmdShow);
     hdc = GetDC(hwnd);
-    FreeConsole();
+    //FreeConsole();
 
     // Initial placeholder screen
     RECT clientRect;
