@@ -490,8 +490,8 @@ void WindowDraw(const std::vector<Triangle2D> &triangles) {
 
     //for (const Triangle2D& triangle : triangles) {
         POINT point1 = {200,100};
-        POINT point2 = {100,200};
-        POINT point3 = {300,300};
+        POINT point2 = {300,450};
+        POINT point3 = {250,200};
         Triangle2D tri;
         tri.points[0] = point1;
         tri.points[1] = point2;
@@ -536,10 +536,12 @@ void WindowDraw(const std::vector<Triangle2D> &triangles) {
         // slope r or l that changes?
         if (!swapped) {
             if (xend.y - tri.points[1].y)
-                slopeL = (float)(tri.points[1].x - xend.x) / (float)(xend.y - tri.points[1].y);
+                slopeL = (float)(xend.x - tri.points[1].x) / (float)(xend.y - tri.points[1].y);
+            std::cout << "slopeL change" << slopeL;
         } else {
             if (xstart.y - tri.points[1].y)
                 slopeR = (float)(xstart.x - tri.points[1].x) / (float)(xstart.y - tri.points[1].y);
+            std::cout << "slopeR change" << slopeR;
         }
 
         for (int y = tri.points[1].y; y < tri.points[2].y; y++) {
