@@ -488,15 +488,15 @@ void WindowDraw(const std::vector<Triangle2D> &triangles) {
     BITMAP bm;
     GetObject(bitmap, sizeof(bm), &bm);
 
-    for (const Triangle2D& triangle : triangles) {
-        POINT point1 = {200,200};
-        POINT point2 = {100,200};
-        POINT point3 = {300,300};
+    //for (const Triangle2D& triangle : triangles) {
+        POINT point1 = {100,200};
+        POINT point2 = {200,200};
+        POINT point3 = {150,300};
         Triangle2D tri;
         tri.points[0] = point1;
         tri.points[1] = point2;
         tri.points[2] = point3;
-        tri = triangle;
+        //tri = triangle;
 
         // rasterization (that isnt so good yet)
 
@@ -523,6 +523,10 @@ void WindowDraw(const std::vector<Triangle2D> &triangles) {
         
         int lastEnd = tri.points[0].x;
         int lastStart = xstart.x;
+        if (swapped) {
+            lastEnd = xstart.x;
+            lastStart = tri.points[0].x;
+        }
         // cleanness: store progress in vars instead
 
         for (int y = tri.points[0].y; y < tri.points[1].y; y++) {
@@ -548,7 +552,7 @@ void WindowDraw(const std::vector<Triangle2D> &triangles) {
             }
         }
 
-    }
+    //}
     BitBlt(hdc, 0, 0, windowWidth, windowHeight, hdcBuffer, 0, 0, SRCCOPY);
     frames++;
     visibleTriangles = triangles.size();
